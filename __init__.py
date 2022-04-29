@@ -104,12 +104,12 @@ def link_blend_file(file_path, datablock_dir, data_name):
 '''		
 		if self.source == 'CURRENT_SCENE':
 			command += f'''\nprint("Importing Scene {bpy.context.scene.name}")'''
-			command += f'''\nlink_blend_file(file_path='{bpy.data.filepath}', datablock_dir = 'Scene', data_name='{bpy.context.scene.name}')'''
+			command += f'''\nlink_blend_file(file_path=r'{bpy.data.filepath}', datablock_dir = 'Scene', data_name='{bpy.context.scene.name}')'''
 		elif self.source == 'SELECTED_OBJECTS':
 			# Import Objects
 			for o in self.selected_objects:
 				command += f'''\nprint("Importing Object {o.name}")'''
-				command += f'''\nlink_blend_file(file_path='{bpy.data.filepath}', datablock_dir = 'Object', data_name='{o.name}')'''
+				command += f'''\nlink_blend_file(file_path=r'{bpy.data.filepath}', datablock_dir = 'Object', data_name='{o.name}')'''
 				if self.create_collection_hierarchy:
 					command += f'''\nbpy.context.collection.objects.unlink(bpy.data.objects["{o.name}"])'''
 		
@@ -140,7 +140,7 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
 							command += f'''\nprint("Linking Object {o.name} to Collection {c.name}")'''
 							command += f'''\nbpy.data.collections["{c.name}"].objects.link(bpy.data.objects["{o.name}"])'''
        
-		command += f"\nbpy.ops.wm.save_as_mainfile('EXEC_DEFAULT',filepath='{self.filepath}')"
+		command += f"\nbpy.ops.wm.save_as_mainfile('EXEC_DEFAULT',filepath=r'{self.filepath}')"
 		return command
 	
 	def link_blend_file(self, file_path, datablock_dir, data_name):
