@@ -62,13 +62,15 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 		# self.current_collection = context.collection
 
 		command = self.generate_command(context)
-
+		print(command)
 		if self.export_to_clean_scene:
 			subprocess.check_call([bpy.app.binary_path,
 			'--background',
 			path.join(path.dirname(path.realpath(__file__)), 'StartupClean', "StartupClean.blend"),
 			'--debug-handlers',
 			'--factory-startup',
+			'--log', "*",
+			'--log-file', ".\debug.log",
 			'--python-expr', command,
 			])
 		else:
@@ -95,22 +97,35 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 		return {'FINISHED'}
 	
 	def generate_command(self, context):
-		# Base Command + define the link function
+		# Base Command and define the link function
 		command = '''import bpy, os
-def link_blend_file(file_path, datablock_dir, data_name):
-	filepath = os.path.join(file_path, datablock_dir, data_name)
-	directory = os.path.join(file_path, datablock_dir)
-	bpy.ops.wm.link(filepath = filepath, directory = directory, filename = data_name, link = False)
-'''		
+initial_count = len(bpy.data.objects)'''		
 		if self.source == 'CURRENT_SCENE':
 			command += f'''\nprint("Importing Scene {bpy.context.scene.name}")'''
-			command += f'''\nlink_blend_file(file_path=r'{bpy.data.filepath}', datablock_dir = 'Scene', data_name='{bpy.context.scene.name}')'''
+			command += f'''\nfilepath = os.path.join(r'{bpy.data.filepath}', 'Scene', '{bpy.context.scene.name}')
+directory = os.path.join(r'{bpy.data.filepath}', 'Scene')
+bpy.ops.wm.append(filepath = filepath, directory = directory, filename = "{bpy.context.scene.name}"'''
 		elif self.source == 'SELECTED_OBJECTS':
 			# Import Objects
-			for o in self.selected_objects:
-				command += f'''\nprint("Importing Object {o.name}")'''
-				command += f'''\nlink_blend_file(file_path=r'{bpy.data.filepath}', datablock_dir = 'Object', data_name='{o.name}')'''
-				if self.create_collection_hierarchy:
+			command += f'''\nprint("Importing Objects")'''
+			command += f'''\nfilepath = os.path.join(r'{bpy.data.filepath}', 'Object', '{self.selected_objects[0].name}')
+directory = os.path.join(r'{bpy.data.filepath}', 'Object')
+bpy.ops.wm.append(filepath = filepath, directory = directory, filename = "{self.selected_objects[0].name}"'''
+			if len(self.selected_objects) > 1:
+				command += f''', files=['''
+				for i,o in enumerate(self.selected_objects):
+					command += '''{'''
+					command += f'''"name":"{o.name}", "name":"{o.name}"'''
+					if i < len(self.selected_objects)-1:
+						command += '''},'''
+					else:
+						command += '''}]'''
+				command += ''')'''	
+			else:
+				command += ''')'''	
+   
+			if self.create_collection_hierarchy:
+				for o in self.selected_objects:
 					command += f'''\nbpy.context.collection.objects.unlink(bpy.data.objects["{o.name}"])'''
 		
 			if self.create_collection_hierarchy:
@@ -139,9 +154,29 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
 						if c.name in self.parent_collections.keys():
 							command += f'''\nprint("Linking Object {o.name} to Collection {c.name}")'''
 							command += f'''\nbpy.data.collections["{c.name}"].objects.link(bpy.data.objects["{o.name}"])'''
-       
+
+    			# Link Dependencies in a dedicated collection
+				command += f'''\nif {len(self.selected_objects)} < len(bpy.data.objects) - initial_count:
+	col = bpy.data.collections.new('Dependencies')
+	bpy.context.scene.collection.children.link(bpy.data.collections["Dependencies"])
+	for o in bpy.data.objects:
+		if o.name not in {self.get_object_list_name(self.selected_objects)}:
+			print("Linking Object o.name to Collection Dependencies")
+			bpy.context.collection.objects.unlink(bpy.data.objects[o.name])
+			bpy.data.collections["Dependencies"].objects.link(bpy.data.objects[o.name])
+'''
 		command += f"\nbpy.ops.wm.save_as_mainfile('EXEC_DEFAULT',filepath=r'{self.filepath}')"
 		return command
+	
+	def get_object_list_name(self, object_list):
+		string_names = '['
+		for i,o in enumerate(object_list):
+			string_names += f'"{o.name}"'
+			if i < len(object_list)-1:
+				string_names += f', '
+    
+		string_names += ']'
+		return string_names
 	
 	def link_blend_file(self, file_path, datablock_dir, data_name):
 		filepath = path.join(file_path, datablock_dir, data_name)
@@ -149,13 +184,21 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
 		bpy.ops.wm.link(filepath = filepath, directory = directory, filename = data_name, link = True)
   
 	def feed_collection_hierarchy_from_selected_objects(self):
-		'''Return all the necessary collection needed to create one item'''
 		self.objects_collection_hierarchy = self.get_objects_collection_hierarchy(self.selected_objects)
 		self.objects_collection_list = [bpy.context.scene.collection.name]
 		for c in self.objects_collection_hierarchy.values():
 			for cc in c:
 				if cc not in self.objects_collection_list:
 					self.objects_collection_list.append(cc)
+		
+		self.object_data_dependencies = {}
+		for o in self.selected_objects:
+			if o.data is None:
+				continue
+			if o.data.name not in self.object_data_dependencies.keys():
+				self.object_data_dependencies[o.data.name] = [o.name]
+			else:
+				self.object_data_dependencies[o.data.name].append(o.name)
 	
 	# Traverse Tree and parent lookup from brockmann: https://blender.stackexchange.com/a/172581
 	def traverse_tree(self, t):
