@@ -5,7 +5,7 @@ from bpy_extras.io_utils import ImportHelper
 bl_info = {
 	"name" : "Export as Blend",
 	"author" : "Tilapiatsu",
-	"description" : "This addon allow you to export data to a new blend file, From selected Objects or a comlplete Scene.",
+	"description" : "This addon allow you to export data to a new blend file, from selected Objects or a comlplete Scene.",
 	"version": (1, 0, 0, 0),
 	"blender" : (3, 1, 0),
 	"location" : "",
@@ -25,6 +25,8 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 	
 	files : bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement)
 	source : bpy.props.EnumProperty(items=[("SELECTED_OBJECTS", "Selected Objects", ""), ("CURRENT_SCENE", "Current Scene", "")])
+	
+	mode : bpy.props.EnumProperty(items=[("APPEND", "Append", ""), ("LINK", "Link", "")])
 
 	create_collection_hierarchy : bpy.props.BoolProperty(name='Create Collection Hierarchy',
                                                       	description='Each Objects will be exported in its respective collection hierarchy from the source Blend file. Otherwise all Objects will be exported in the default collection',
@@ -32,8 +34,14 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 	export_to_clean_scene : bpy.props.BoolProperty(	name='Export To Clean Scene',
                                                 	description='If enable the startup scene will be skipped and the data will be exported in a clean empty scene',
                                                  	default=True)
-	export_dependencies_in_dedicated_collection : bpy.props.BoolProperty(	name='Export object dependencies in a dedicated collection',
+	export_dependencies_in_dedicated_collection : bpy.props.BoolProperty(name='Export dependencies in dedicated collection',
                                             	description='Each object dependencies are put in a dedicated collection named "Dependencies". If unchecked, each dependencies will be placed their respective collection from the source blend file',
+                                             	default=False)
+	pack_external_data : bpy.props.BoolProperty(	name='Pack External Data',
+                                            	description='All data exported will be packed into the blend file, to avoid external files dependencies. It would increase drastically the size of the exported file and saving time',
+                                             	default=False)
+	open_exported_blend : bpy.props.BoolProperty(	name='Open Exported Blend',
+                                            	description='The Exported blend file will be opened after export',
                                              	default=False)
 	# relink_as_library : bpy.props.BoolProperty(	name='Relink as Library',
     #                                         	description='After export, the file is relink as a library in the current Scene',
@@ -44,48 +52,51 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 		col = layout.column()
 		col.label(text='Export Settings')
 		col.prop(self, 'source')
+		col.prop(self, 'mode')
+		if self.mode == "APPEND":
+			col.prop(self, 'pack_external_data')
 		col.prop(self, 'export_to_clean_scene')
-		col = layout.column()
-		col.prop(self, 'create_collection_hierarchy')
-		
-		if self.source != "SELECTED_OBJECTS":
-			col.enabled = False
-		col = layout.column()
-		col.prop(self, 'export_dependencies_in_dedicated_collection')
-		if not self.create_collection_hierarchy or self.source != "SELECTED_OBJECTS":
-			col.enabled = False
+  
+		if self.source == "SELECTED_OBJECTS":
+			col.prop(self, 'create_collection_hierarchy')
+
+		if self.source == "SELECTED_OBJECTS":
+			col.prop(self, 'export_dependencies_in_dedicated_collection')
+
+		col.prop(self, 'open_exported_blend')
 		# col.prop(self, 'relink_as_library')
 	
+	@property
+	def is_linked(self):
+		return self.mode == "LINK"
 	def execute(self,context):
 		ext = path.splitext(self.filepath)[1].lower()
 		if ext != '.blend':
 			self.filepath += '.blend'
-		
+
 		self.selected_objects = context.selected_objects
 		self.parent_collections = self.parent_lookup(context.scene.collection)
 		self.root_collection = context.scene.collection
 		self.collections_in_scene = [c.name for c in bpy.data.collections if bpy.context.scene.user_of_id(c)]
 		self.feed_collection_hierarchy_from_selected_objects()
 		# self.current_collection = context.collection
-
+		
 		command = self.generate_command(context)
+		# print(command)
 		if self.export_to_clean_scene:
 			subprocess.check_call([bpy.app.binary_path,
 			'--background',
 			path.join(path.dirname(path.realpath(__file__)), 'StartupClean', "StartupClean.blend"),
-			'--debug-handlers',
 			'--factory-startup',
-			'--log', "*",
-			'--log-file', ".\debug.log",
 			'--python-expr', command,
 			])
 		else:
 			subprocess.check_call([bpy.app.binary_path,
 			'--background',
-			'--debug-handlers',
 			'--factory-startup',
 			'--python-expr', command,
 			])
+	
 
 		#   Not Working Yet
 		# if self.relink_as_library:
@@ -99,7 +110,11 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 		# 		for c in self.objects_collection_hierarchy.values():
 		# 			for cc in c:
 		# 				bpy.data.collections[cc].objects.link(bpy.data.objects[o.name])
-     
+
+		if self.open_exported_blend:
+			subprocess.Popen([bpy.app.binary_path,
+			self.filepath
+			])
 		return {'FINISHED'}
 	
 	def generate_command(self, context):
@@ -117,7 +132,7 @@ bpy.ops.wm.append(filepath = filepath, directory = directory, filename = "{conte
 			command += f'\nprint("Importing Objects")'
 			command += f'''\nfilepath = os.path.join(r'{bpy.data.filepath}', 'Object', '{self.selected_objects[0].name}')
 directory = os.path.join(r'{bpy.data.filepath}', 'Object')
-bpy.ops.wm.append(filepath = filepath, directory = directory, filename = "{self.selected_objects[0].name}"'''
+bpy.ops.wm.link(filepath = filepath, directory = directory, filename = "{self.selected_objects[0].name}", link = {self.is_linked}'''
 			if len(self.selected_objects) > 1:
 				command += f', files=['
 				for i,o in enumerate(self.selected_objects):
@@ -161,15 +176,19 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
 							command += f'''\nbpy.data.collections["{c.name}"].objects.link(bpy.data.objects["{o.name}"])'''
 
     		# Link Dependencies in a dedicated collection
-			if self.export_dependencies_in_dedicated_collection:
+			if self.export_dependencies_in_dedicated_collection and self.mode != "LINK":
 				command += f'''\nif {len(self.selected_objects)} < len(bpy.data.objects) - initial_count:
 	bpy.data.collections.new('Dependencies')
 	bpy.context.scene.collection.children.link(bpy.data.collections["Dependencies"])
 	for o in bpy.data.objects:
-		if o.name not in {self.get_object_list_name(self.selected_objects)}:
-			print("Linking Object o.name to Collection Dependencies")
-			bpy.context.collection.objects.unlink(bpy.data.objects[o.name])
-			bpy.data.collections["Dependencies"].objects.link(bpy.data.objects[o.name])
+		if o.name in {self.get_object_list_name(self.selected_objects)}:
+			continue
+		if o.name not in bpy.context.collection.objects:
+			continue
+   
+		print("Linking Object" + o.name + "to Dependencies Collection ")
+		bpy.context.collection.objects.unlink(bpy.data.objects[o.name])
+		bpy.data.collections["Dependencies"].objects.link(bpy.data.objects[o.name])
 '''			
 			# Link Dependencies in its respective collection from source blend file
 			elif not self.export_dependencies_in_dedicated_collection and self.create_collection_hierarchy:
@@ -183,7 +202,9 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
 		for obj,h in all_collection_hierarchy.items():
 			if obj != o.name:
 				continue
-
+			if obj not in bpy.context.collection.objects:
+				continue
+    
 			for hh in h:
 				hierarchy = list(reversed(hh))
 				for i,c in enumerate(hierarchy):
@@ -203,7 +224,12 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
 					print("Linking dependency Object " + o.name + " to Collection " +  c)
 					bpy.context.collection.objects.unlink(bpy.data.objects[o.name])
 					bpy.data.collections[hierarchy[len(hierarchy)-1]].objects.link(bpy.data.objects[o.name])
-'''
+'''		
+		if self.pack_external_data and self.mode == 'APPEND':
+			command += '''\ntry:
+	bpy.ops.file.pack_all()
+except RuntimeError as e:
+	print("Cannot pack data or data does not exist on drive.  " + e)'''
 		command += f"\nbpy.ops.wm.save_as_mainfile('EXEC_DEFAULT',filepath=r'{self.filepath}')"
 		return command
 	
