@@ -2,7 +2,8 @@
 
 ### Description
 This addon allow you to export data to a new blend file.
-Usualy we would neeed to create a new Blend file and Link or Append data from another file.
+Usually we would neeed to create a new Blend file first then Link or Append data from the file you want the data from.
+With this addon **you can just export objects dirrectly from the file you have the data into**.
 
 This addon works with objects or scene only at the moment. 
 
