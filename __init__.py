@@ -6,9 +6,9 @@ bl_info = {
 	"name" : "Export as Blend",
 	"author" : "Tilapiatsu",
 	"description" : "This addon allow you to export data to a new blend file, from selected Objects or a comlplete Scene.",
-	"version": (1, 0, 0, 0),
+	"version": (1, 0, 0),
 	"blender" : (3, 1, 0),
-	"location" : "",
+	"location" : "File > Export > Export as Blend (.blend)",
 	"warning" : "",
 	"category" : "Import-Export"
 }
