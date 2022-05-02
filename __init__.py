@@ -31,8 +31,8 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 	create_collection_hierarchy : bpy.props.BoolProperty(name='Create Collection Hierarchy',
                                                       	description='Each Objects will be exported in its respective collection hierarchy from the source Blend file. Otherwise all Objects will be exported in the default collection',
                                                        default=True)
-	export_to_clean_scene : bpy.props.BoolProperty(	name='Export To Clean Scene',
-                                                	description='If enable the startup scene will be skipped and the data will be exported in a clean empty scene',
+	export_to_clean_scene : bpy.props.BoolProperty(	name='Export To Clean File',
+                                                	description='If enable the startup file will be skipped and the data will be exported in a clean empty file',
                                                  	default=True)
 	export_dependencies_in_dedicated_collection : bpy.props.BoolProperty(name='Export dependencies in dedicated collection',
                                             	description='Each object dependencies are put in a dedicated collection named "Dependencies". If unchecked, each dependencies will be placed their respective collection from the source blend file',
@@ -55,7 +55,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 		col.prop(self, 'mode')
 		if self.mode == "APPEND":
 			col.prop(self, 'pack_external_data')
-		col.prop(self, 'export_to_clean_scene')
+		col.prop(self, 'export_to_clean_file')
   
 		if self.source == "SELECTED_OBJECTS":
 			col.prop(self, 'create_collection_hierarchy')
@@ -83,7 +83,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 		
 		command = self.generate_command(context)
 		# print(command)
-		if self.export_to_clean_scene:
+		if self.export_to_clean_file:
 			subprocess.check_call([bpy.app.binary_path,
 			'--background',
 			path.join(path.dirname(path.realpath(__file__)), 'StartupClean', "StartupClean.blend"),
