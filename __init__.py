@@ -27,14 +27,17 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 	source : bpy.props.EnumProperty(items=[("SELECTED_OBJECTS", "Selected Objects", ""), ("CURRENT_SCENE", "Current Scene", "")])
 
 	create_collection_hierarchy : bpy.props.BoolProperty(name='Create Collection Hierarchy',
-                                                      	description='Each Objects will be exported in its collection hierarchy',
+                                                      	description='Each Objects will be exported in its respective collection hierarchy from the source Blend file. Otherwise all Objects will be exported in the default collection',
                                                        default=True)
 	export_to_clean_scene : bpy.props.BoolProperty(	name='Export To Clean Scene',
-                                                	description='If Enable the startup scene will be skipped and the data will be exported in a clean empty scene',
+                                                	description='If enable the startup scene will be skipped and the data will be exported in a clean empty scene',
                                                  	default=True)
-	relink_as_library : bpy.props.BoolProperty(	name='Relink as Library',
-                                            	description='After export, the file is relink as a library in the current Scene',
+	export_dependencies_in_dedicated_collection : bpy.props.BoolProperty(	name='Export object dependencies in a dedicated collection',
+                                            	description='Each object dependencies are put in a dedicated collection named "Dependencies". If unchecked, each dependencies will be placed their respective collection from the source blend file',
                                              	default=False)
+	# relink_as_library : bpy.props.BoolProperty(	name='Relink as Library',
+    #                                         	description='After export, the file is relink as a library in the current Scene',
+    #                                          	default=False)
 
 	def draw(self, context):
 		layout = self.layout
@@ -44,9 +47,13 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 		col.prop(self, 'export_to_clean_scene')
 		col = layout.column()
 		col.prop(self, 'create_collection_hierarchy')
+		
 		if self.source != "SELECTED_OBJECTS":
 			col.enabled = False
 		col = layout.column()
+		col.prop(self, 'export_dependencies_in_dedicated_collection')
+		if not self.create_collection_hierarchy or self.source != "SELECTED_OBJECTS":
+			col.enabled = False
 		# col.prop(self, 'relink_as_library')
 	
 	def execute(self,context):
@@ -62,7 +69,6 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 		# self.current_collection = context.collection
 
 		command = self.generate_command(context)
-		print(command)
 		if self.export_to_clean_scene:
 			subprocess.check_call([bpy.app.binary_path,
 			'--background',
@@ -82,54 +88,53 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 			])
 
 		#   Not Working Yet
-		if self.relink_as_library:
-			for o in self.selected_objects:
-				for c in o.users_collection:
-					if c.name in self.objects_collection_list:
-						c.objects.unlink(bpy.data.objects[o.name])
+		# if self.relink_as_library:
+		# 	for o in self.selected_objects:
+		# 		for c in o.users_collection:
+		# 			if c.name in self.objects_collection_list:
+		# 				c.objects.unlink(bpy.data.objects[o.name])
       
-				self.link_blend_file(self.filepath, 'Object', o.name)
+		# 		self.link_blend_file(self.filepath, 'Object', o.name)
 			
-				for c in self.objects_collection_hierarchy.values():
-					for cc in c:
-						bpy.data.collections[cc].objects.link(bpy.data.objects[o.name])
+		# 		for c in self.objects_collection_hierarchy.values():
+		# 			for cc in c:
+		# 				bpy.data.collections[cc].objects.link(bpy.data.objects[o.name])
      
 		return {'FINISHED'}
 	
 	def generate_command(self, context):
 		# Base Command and define the link function
 		command = '''import bpy, os
-initial_count = len(bpy.data.objects)'''		
+initial_count = len(bpy.data.objects)
+'''		
 		if self.source == 'CURRENT_SCENE':
-			command += f'''\nprint("Importing Scene {bpy.context.scene.name}")'''
-			command += f'''\nfilepath = os.path.join(r'{bpy.data.filepath}', 'Scene', '{bpy.context.scene.name}')
+			command += f'\nprint("Importing Scene {context.scene.name}")'
+			command += f'''\nfilepath = os.path.join(r'{bpy.data.filepath}', 'Scene', '{context.scene.name}')
 directory = os.path.join(r'{bpy.data.filepath}', 'Scene')
-bpy.ops.wm.append(filepath = filepath, directory = directory, filename = "{bpy.context.scene.name}"'''
+bpy.ops.wm.append(filepath = filepath, directory = directory, filename = "{context.scene.name}"'''
 		elif self.source == 'SELECTED_OBJECTS':
 			# Import Objects
-			command += f'''\nprint("Importing Objects")'''
+			command += f'\nprint("Importing Objects")'
 			command += f'''\nfilepath = os.path.join(r'{bpy.data.filepath}', 'Object', '{self.selected_objects[0].name}')
 directory = os.path.join(r'{bpy.data.filepath}', 'Object')
 bpy.ops.wm.append(filepath = filepath, directory = directory, filename = "{self.selected_objects[0].name}"'''
 			if len(self.selected_objects) > 1:
-				command += f''', files=['''
+				command += f', files=['
 				for i,o in enumerate(self.selected_objects):
-					command += '''{'''
-					command += f'''"name":"{o.name}", "name":"{o.name}"'''
+					command += '{'
+					command += f'"name":"{o.name}", "name":"{o.name}"'
 					if i < len(self.selected_objects)-1:
-						command += '''},'''
+						command += '},'
 					else:
-						command += '''}]'''
-				command += ''')'''	
+						command += '}]'
+				command += ')'	
 			else:
-				command += ''')'''	
+				command += ')'	
    
+			# Create Collection Hierarchy
 			if self.create_collection_hierarchy:
 				for o in self.selected_objects:
 					command += f'''\nbpy.context.collection.objects.unlink(bpy.data.objects["{o.name}"])'''
-		
-			if self.create_collection_hierarchy:
-			# Create Collection Hierarchy
 				for c,p in self.parent_collections.items():
 					if c not in self.objects_collection_list:
 						continue
@@ -155,15 +160,49 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
 							command += f'''\nprint("Linking Object {o.name} to Collection {c.name}")'''
 							command += f'''\nbpy.data.collections["{c.name}"].objects.link(bpy.data.objects["{o.name}"])'''
 
-    			# Link Dependencies in a dedicated collection
+    		# Link Dependencies in a dedicated collection
+			if self.export_dependencies_in_dedicated_collection:
 				command += f'''\nif {len(self.selected_objects)} < len(bpy.data.objects) - initial_count:
-	col = bpy.data.collections.new('Dependencies')
+	bpy.data.collections.new('Dependencies')
 	bpy.context.scene.collection.children.link(bpy.data.collections["Dependencies"])
 	for o in bpy.data.objects:
 		if o.name not in {self.get_object_list_name(self.selected_objects)}:
 			print("Linking Object o.name to Collection Dependencies")
 			bpy.context.collection.objects.unlink(bpy.data.objects[o.name])
 			bpy.data.collections["Dependencies"].objects.link(bpy.data.objects[o.name])
+'''			
+			# Link Dependencies in its respective collection from source blend file
+			elif not self.export_dependencies_in_dedicated_collection and self.create_collection_hierarchy:
+				command += f'''\nif {len(self.selected_objects)} < len(bpy.data.objects) - initial_count:
+	for o in bpy.data.objects:
+		if o.name in {self.get_object_list_name(self.selected_objects)}:
+			continue
+		
+		all_collection_hierarchy = {self.get_all_objects_collection_hierarchy_as_string()}
+
+		for obj,h in all_collection_hierarchy.items():
+			if obj != o.name:
+				continue
+
+			for hh in h:
+				hierarchy = list(reversed(hh))
+				for i,c in enumerate(hierarchy):
+					if i == 0:
+						if c not in bpy.data.collections:
+							bpy.data.collections.new(c)
+							bpy.context.scene.collection.children.link(bpy.data.collections[c])
+						if c not in bpy.context.collection.children:
+							bpy.context.scene.collection.children.link(bpy.data.collections[c])
+					else:
+						if c not in bpy.data.collections:
+							bpy.data.collections.new(c)
+						
+						if c not in bpy.data.collections[hierarchy[i-1]].children:
+							bpy.data.collections[hierarchy[i-1]].children.link(bpy.data.collections[c])
+				else:
+					print("Linking dependency Object " + o.name + " to Collection " +  c)
+					bpy.context.collection.objects.unlink(bpy.data.objects[o.name])
+					bpy.data.collections[hierarchy[len(hierarchy)-1]].objects.link(bpy.data.objects[o.name])
 '''
 		command += f"\nbpy.ops.wm.save_as_mainfile('EXEC_DEFAULT',filepath=r'{self.filepath}')"
 		return command
@@ -177,6 +216,36 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
     
 		string_names += ']'
 		return string_names
+
+	def get_list_as_string(self, l):
+		string_names = '['
+		for i,o in enumerate(l):
+			string_names += f'"{o}"'
+			if i < len(l)-1:
+				string_names += f', '
+    
+		string_names += ']'
+		return string_names
+
+	def get_all_objects_collection_hierarchy_as_string(self):
+		string_dict = '{'
+		i = 0
+		for o,p in self.all_objects_collection_hierarchy.items():
+			parent = '['
+			for j,pp in enumerate(p):
+				parent += self.get_list_as_string(pp)
+				# parent += f'"{pp}"'
+				if j < len(p) -1:
+					parent += ','
+			parent += ']'
+   
+			string_dict += f'"{o}":{parent}'
+			if i < len(self.all_objects_collection_hierarchy.keys())-1:
+				string_dict += f', '
+			
+			i += 1
+		string_dict += '}'
+		return string_dict
 	
 	def link_blend_file(self, file_path, datablock_dir, data_name):
 		filepath = path.join(file_path, datablock_dir, data_name)
@@ -199,7 +268,16 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
 				self.object_data_dependencies[o.data.name] = [o.name]
 			else:
 				self.object_data_dependencies[o.data.name].append(o.name)
-	
+    
+		self.all_objects_collection_hierarchy = {}
+		for o in bpy.data.objects:
+			hierarchies = []
+			for c in o.users_collection:
+				coll = []
+				self.get_parent_collection_names(c, coll)
+				hierarchies.append(coll)
+			self.all_objects_collection_hierarchy[o.name] = hierarchies
+    	
 	# Traverse Tree and parent lookup from brockmann: https://blender.stackexchange.com/a/172581
 	def traverse_tree(self, t):
 		yield t
@@ -236,9 +314,6 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
 				self.get_parent_collection_names(coll, parent_collection)
 				collection_hierarchy.setdefault(obj.name, parent_collection)
 		return collection_hierarchy
- 
-
-
 
 def menu_func_export(self, context):
 	self.layout.operator(TILA_OP_ExportAsBlend.bl_idname, text="Export as Blend (.blend)")
