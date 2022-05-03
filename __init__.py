@@ -16,7 +16,7 @@ bl_info = {
 # Todo : 
 #	- Need to check the shared Data before importing, and relink and clean if shared
 class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
-	bl_idname = "export_scene.tila_blend"
+	bl_idname = "export_scene.tila_export_as_blend"
 	bl_label = "Export as Blend"
 	bl_options = {'REGISTER', 'INTERNAL'}
 	bl_region_type = "UI"
