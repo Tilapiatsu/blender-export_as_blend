@@ -1,4 +1,4 @@
-import bpy, subprocess
+import bpy, subprocess, tempfile, shutil, os, stat
 from os import path
 from bpy_extras.io_utils import ImportHelper
 
@@ -31,7 +31,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 	create_collection_hierarchy : bpy.props.BoolProperty(name='Create Collection Hierarchy',
                                                       	description='Each Objects will be exported in its respective collection hierarchy from the source Blend file. Otherwise all Objects will be exported in the default collection',
                                                        default=True)
-	export_to_clean_scene : bpy.props.BoolProperty(	name='Export To Clean File',
+	export_to_clean_file : bpy.props.BoolProperty(	name='Export To Clean File',
                                                 	description='If enable the startup file will be skipped and the data will be exported in a clean empty file',
                                                  	default=True)
 	export_dependencies_in_dedicated_collection : bpy.props.BoolProperty(name='Export dependencies in dedicated collection',
@@ -74,6 +74,15 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 		if ext != '.blend':
 			self.filepath += '.blend'
 
+		if bpy.data.is_dirty:
+			self.tmpdir = tempfile.mkdtemp()
+			self.curent_file = path.join(self.tmpdir, path.basename(self.filepath))
+			bpy.ops.wm.save_as_mainfile('EXEC_DEFAULT',filepath=self.curent_file, copy=True)
+			saved_to_temp_folder = True
+		else:
+			self.curent_file = bpy.data.filepath
+			saved_to_temp_folder = False
+
 		self.selected_objects = context.selected_objects
 		self.parent_collections = self.parent_lookup(context.scene.collection)
 		self.root_collection = context.scene.collection
@@ -115,6 +124,10 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 			subprocess.Popen([bpy.app.binary_path,
 			self.filepath
 			])
+
+		if saved_to_temp_folder:
+			delete_folder_if_exist(self.tmpdir)
+
 		return {'FINISHED'}
 	
 	def generate_command(self, context):
@@ -124,14 +137,14 @@ initial_count = len(bpy.data.objects)
 '''		
 		if self.source == 'CURRENT_SCENE':
 			command += f'\nprint("Importing Scene {context.scene.name}")'
-			command += f'''\nfilepath = os.path.join(r'{bpy.data.filepath}', 'Scene', '{context.scene.name}')
-directory = os.path.join(r'{bpy.data.filepath}', 'Scene')
+			command += f'''\nfilepath = os.path.join(r'{self.curent_file}', 'Scene', '{context.scene.name}')
+directory = os.path.join(r'{self.curent_file}', 'Scene')
 bpy.ops.wm.append(filepath = filepath, directory = directory, filename = "{context.scene.name}"'''
 		elif self.source == 'SELECTED_OBJECTS':
 			# Import Objects
 			command += f'\nprint("Importing Objects")'
-			command += f'''\nfilepath = os.path.join(r'{bpy.data.filepath}', 'Object', '{self.selected_objects[0].name}')
-directory = os.path.join(r'{bpy.data.filepath}', 'Object')
+			command += f'''\nfilepath = os.path.join(r'{self.curent_file}', 'Object', '{self.selected_objects[0].name}')
+directory = os.path.join(r'{self.curent_file}', 'Object')
 bpy.ops.wm.link(filepath = filepath, directory = directory, filename = "{self.selected_objects[0].name}", link = {self.is_linked}'''
 			if len(self.selected_objects) > 1:
 				command += f', files=['
@@ -340,6 +353,20 @@ except RuntimeError as e:
 				self.get_parent_collection_names(coll, parent_collection)
 				collection_hierarchy.setdefault(obj.name, parent_collection)
 		return collection_hierarchy
+	
+def delete_folder_if_exist(p):
+	if path.exists(p):
+		shutil.rmtree(p, onerror=file_acces_handler)
+
+def file_acces_handler(func, path, exc_info):
+	print('Handling Error for file ' , path)
+	print(exc_info)
+	# Check if file access issue
+	if not os.access(path, os.W_OK):
+	   # Try to change the permision of file
+	   os.chmod(path, stat.S_IWUSR)
+	   # call the calling function again
+	   func(path)
 
 def menu_func_export(self, context):
 	self.layout.operator(TILA_OP_ExportAsBlend.bl_idname, text="Export as Blend (.blend)")
