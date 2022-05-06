@@ -18,52 +18,6 @@ bl_info = {
 	"category": "Import-Export"
 }
 
-data_to_clean = ['actions',
-				'armatures',
-				'brushes',
-				'cache_files',
-				'cameras',
-				'collections',
-				'curves',
-				'fonts',
-				'grease_pencils',
-				'images',
-				'is_dirty',
-				'is_saved',
-				'lattices',
-				'libraries',
-				'lightprobes',
-				'lights',
-				'linestyles',
-				'masks',
-				'materials',
-				'meshes',
-				'metaballs',
-				'movieclips',
-				'node_groups',
-				'objects',
-				'orphans_purge',
-				'paint_curves',
-				'palettes',
-				'particles',
-				'pointclouds',
-				'rna_type',
-				'scenes',
-				'screens',
-				'shape_keys',
-				'sounds',
-				'speakers',
-				'temp_data',
-				'texts',
-				'textures',
-				'use_autopack',
-				'user_map',
-				'version',
-				'volumes',
-				'window_managers',
-				'workspaces',
-				'worlds']
-
 def update_override(self, context):
     if self.override != 'OVERRIDE':
     	self.export_to_clean_file = False
@@ -190,37 +144,53 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 		if not path.exists(self.filepath):
 			self.override == 'OVERRIDE'
 
-		self.selected_objects = context.selected_objects
-		self.parent_collections = self.parent_lookup(context.scene.collection)
-		self.root_collection = context.scene.collection
-		self.collections_in_scene = [
-			c.name for c in bpy.data.collections if bpy.context.scene.user_of_id(c)]
-		self.feed_collection_hierarchy_from_selected_objects()
+		self.feed_scene_list(context)
 
-		command = self.generate_command(context)
-		print(command)
-		if self.export_to_clean_file:
-			subprocess.check_call([bpy.app.binary_path,
+		# command = self.generate_command(context)
+		# print(command)
+
+		subprocess.check_call([bpy.app.binary_path,
 								   '--background',
-								   path.join(path.dirname(path.realpath(
-									   __file__)), 'StartupClean', "StartupClean.blend"),
-								   '--factory-startup',
-								   '--python-expr', command,
-								   ])
-		else:
-			if self.override == 'OVERRIDE':
-				subprocess.check_call([bpy.app.binary_path,
-									'--background',
-									'--factory-startup',
-									'--python-expr', command,
-									])
-			else:
-				subprocess.check_call([bpy.app.binary_path,
-									self.filepath,
-									'--background',
-									'--factory-startup',
-									'--python-expr', command,
-									])
+								   path.join(path.dirname(path.realpath(__file__)), 'StartupClean', "StartupClean.blend"),
+								   	'--factory-startup',
+								   	'--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--',
+									'-f', self.curent_file,
+									'-s', self.source,
+									'-o', self.override,
+									'-m', self.mode,
+									'-N', str(self.export_in_new_collection),
+									'-n', self.new_collection_name,
+									'-d', str(self.dependencies_in_dedicated_collection),
+									'-p', str(self.pack_external_data),
+									'-S', context.scene.name,
+									'-O', self.selected_objects,
+									'-P', self.parent_collections,
+									'-r', self.root_collection,
+									'-l', self.objects_collection_list,
+									'-H', self.all_objects_collection_hierarchy
+							])		
+		# if self.export_to_clean_file:
+		# 	subprocess.check_call([bpy.app.binary_path,
+		# 						   '--background',
+		# 						   path.join(path.dirname(path.realpath(
+		# 							   __file__)), 'StartupClean', "StartupClean.blend"),
+		# 						   '--factory-startup',
+		# 						   '--python-expr', command,
+		# 						   ])
+		# else:
+		# 	if self.override == 'OVERRIDE':
+		# 		subprocess.check_call([bpy.app.binary_path,
+		# 							'--background',
+		# 							'--factory-startup',
+		# 							'--python-expr', command,
+		# 							])
+		# 	else:
+		# 		subprocess.check_call([bpy.app.binary_path,
+		# 							self.filepath,
+		# 							'--background',
+		# 							'--factory-startup',
+		# 							'--python-expr', command,
+		# 							])
 				
 
 		#   Not Working Yet
@@ -245,6 +215,43 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 			delete_folder_if_exist(self.tmpdir)
 
 		return {'FINISHED'}
+
+	def feed_scene_list(self, context):
+		self.selected_objects = self.get_object_list_name(context.selected_objects)
+		parent_collections = self.parent_lookup(context.scene.collection)
+		self.parent_collections = self.get_dict_as_string(parent_collections)
+		self.root_collection = context.scene.collection.name
+		self.collections_in_scene = [c.name for c in bpy.data.collections if bpy.context.scene.user_of_id(c)]
+		self.objects_collection_hierarchy = self.get_objects_collection_hierarchy(context.selected_objects)
+  
+		self.objects_collection_list = [bpy.context.scene.collection.name]
+		for c in self.objects_collection_hierarchy.values():
+			for cc in c:
+				if cc not in self.objects_collection_list:
+					self.objects_collection_list.append(cc)
+
+		self.objects_collection_list = self.get_list_as_string(self.objects_collection_list)
+  
+		# self.object_data_dependencies = {}
+		# for o in context.selected_objects:
+		# 	if o.data is None:
+		# 		continue
+		# 	if o.data.name not in self.object_data_dependencies.keys():
+		# 		self.object_data_dependencies[o.data.name] = [o.name]
+		# 	else:
+		# 		self.object_data_dependencies[o.data.name].append(o.name)
+
+
+		self.all_objects_collection_hierarchy = {}
+		for o in bpy.data.objects:
+			hierarchies = []
+			for c in o.users_collection:
+				coll = []
+				self.get_parent_collection_names(c, coll)
+				hierarchies.append(coll)
+			self.all_objects_collection_hierarchy[o.name] = hierarchies
+
+		self.all_objects_collection_hierarchy = self.get_dict_as_string(self.all_objects_collection_hierarchy)
 
 	def generate_command(self, context):
 		# Base Command and define the link function
@@ -419,12 +426,28 @@ except RuntimeError as e:
 	def get_list_as_string(self, l):
 		string_names = '['
 		for i, o in enumerate(l):
-			string_names += f'"{o}"'
-			if i < len(l)-1:
-				string_names += f', '
+			if isinstance(o, list):
+				string_names += self.get_list_as_string(o)
+			elif isinstance(o, str):
+				string_names += f'"{o}"'
+				if i < len(l)-1:
+					string_names += f', '
 
 		string_names += ']'
 		return string_names
+
+	def get_dict_as_string(self, d):
+		string_dict = '{'
+		i = 0
+		parent = ''
+		for o, p in d.items():
+			string_dict += f'"{o}":{self.get_list_as_string(p)}'
+			if i < len(d.keys())-1:
+				string_dict += f', '
+
+			i += 1
+		string_dict += '}'
+		return string_dict
 
 	def get_all_objects_collection_hierarchy_as_string(self):
 		string_dict = '{'
@@ -452,33 +475,7 @@ except RuntimeError as e:
 		bpy.ops.wm.link(filepath=filepath, directory=directory,
 						filename=data_name, link=True)
 
-	def feed_collection_hierarchy_from_selected_objects(self):
-		self.objects_collection_hierarchy = self.get_objects_collection_hierarchy(
-			self.selected_objects)
-		self.objects_collection_list = [bpy.context.scene.collection.name]
-		for c in self.objects_collection_hierarchy.values():
-			for cc in c:
-				if cc not in self.objects_collection_list:
-					self.objects_collection_list.append(cc)
-
-		self.object_data_dependencies = {}
-		for o in self.selected_objects:
-			if o.data is None:
-				continue
-			if o.data.name not in self.object_data_dependencies.keys():
-				self.object_data_dependencies[o.data.name] = [o.name]
-			else:
-				self.object_data_dependencies[o.data.name].append(o.name)
-
-		self.all_objects_collection_hierarchy = {}
-		for o in bpy.data.objects:
-			hierarchies = []
-			for c in o.users_collection:
-				coll = []
-				self.get_parent_collection_names(c, coll)
-				hierarchies.append(coll)
-			self.all_objects_collection_hierarchy[o.name] = hierarchies
-
+	
 	# Traverse Tree and parent lookup from brockmann: https://blender.stackexchange.com/a/172581
 	def traverse_tree(self, t):
 		yield t
@@ -524,7 +521,6 @@ except RuntimeError as e:
 			p = getattr(bpy.data, d)
 			if isinstance(p, bpy.types.bpy_prop_collection):
 				if 'remove' in dir(p):
-					
 					for e in p:
 						if d == 'scenes':
 							if e.name == bpy.context.scene.name:
