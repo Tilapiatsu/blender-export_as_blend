@@ -24,8 +24,8 @@ This addon works with objects or scene only at the moment.
 |**Pack External Data**| Any external data will be written into Blend file ( Textures etc...). It will drastically increase saving time and file size, but make the file easier to transfer.|
 |**Export to Clean File**|If enable, the data will be exported to a clean file without any data except from your source objects. Otherwise the data will be exported in a scene with your Startup file as a starting point that can contain many data depending on your configuration.|
 |**Create Collection Hierarchy**| The collection hierarchy of the selected objects will be recreated in the exported file. If disable, all objects will be exported in the root collection.|
-|**Export objects in root collection**|If enable everything will be place under a collection named defined by `Root collection Name`|
-|**Root Collection name**|Name of the collection |
+|**Export objects in new collection**|If enable everything will be place under a collection which name is defined by `New collection Name`|
+|**New Collection name**|Name of the collection |
 |**Export dependencies in dedicated collection**| If enable any object dependencies will be exported in a collection named "Dependencies". Otherwise, the collection hierarchy will be recreated for each dependencies. ( An object dependency is any data neeeded for the selected objects to be evaluated correctly. For exemple, an object that is used in the modifier or a driver used in by the exported object. ) |
 |**Open Exported Blend**| After export, the file is exported.|
 

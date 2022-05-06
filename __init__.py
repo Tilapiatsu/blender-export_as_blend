@@ -48,11 +48,11 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 	export_to_clean_file: bpy.props.BoolProperty(	name='Export To Clean File',
 												  description='If enable the startup file will be skipped and the data will be exported in a clean empty file',
 												  default=True)
-	export_in_root_collection: bpy.props.BoolProperty(name='Export objects in root collection',
-																description='Each objects, dependencies and collection hierarchy will be placed in a root collection',
+	export_in_new_collection: bpy.props.BoolProperty(name='Export objects in new collection',
+																description='Each objects, dependencies and collection hierarchy will be placed in a new collection',
 																default=False)
-	root_collection_name: bpy.props.StringProperty(name='Root Collection name',
-                                                	description='Name of the root collection that will be created',
+	new_collection_name: bpy.props.StringProperty(name='Root Collection name',
+                                                	description='Name of the new collection that will be created',
 													default='Root Collection')
 	dependencies_in_dedicated_collection: bpy.props.BoolProperty(name='Export dependencies in dedicated collection',
 																		description='Each object dependencies are put in a dedicated collection named "Dependencies". If unchecked, each dependencies will be placed their respective collection from the source blend file',
@@ -94,11 +94,11 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 			box.prop(self, 'create_collection_hierarchy')
 			box.prop(self, 'dependencies_in_dedicated_collection')
 			col = box.row()
-			col.prop(self, 'export_in_root_collection')
+			col.prop(self, 'export_in_new_collection')
 			col = box.row()
 			col.alignment = 'EXPAND'
-			col.prop(self, 'root_collection_name', text='Name')
-			col.enabled = self.export_in_root_collection
+			col.prop(self, 'new_collection_name', text='Name')
+			col.enabled = self.export_in_new_collection
 
 		box.prop(self, 'open_exported_blend')
 		# col.prop(self, 'relink_as_library')
@@ -216,16 +216,16 @@ bpy.ops.wm.link(filepath = filepath, directory = directory, filename = "{self.se
 							command += f'''\ncol = bpy.data.collections.new('{c}')'''
 
 						if pp == self.root_collection.name:
-							if self.export_in_root_collection:
-								if self.root_collection_name == '':
+							if self.export_in_new_collection:
+								if self.new_collection_name == '':
 									self.report({'ERROR'}, 'Export As Blend : Root collection name is empty, skipping root collection creation.')
 									command += f'''\nbpy.context.scene.collection.children.link(bpy.data.collections["{c}"])'''
 								else:
-									command += f'''\nif '{self.root_collection_name}' not in bpy.data.collections:
-	bpy.data.collections.new('{self.root_collection_name}')
-	bpy.context.collection.children.link(bpy.data.collections['{self.root_collection_name}'])
+									command += f'''\nif '{self.new_collection_name}' not in bpy.data.collections:
+	bpy.data.collections.new('{self.new_collection_name}')
+	bpy.context.collection.children.link(bpy.data.collections['{self.new_collection_name}'])
 			
-bpy.data.collections['{self.root_collection_name}'].children.link(bpy.data.collections["{c}"])
+bpy.data.collections['{self.new_collection_name}'].children.link(bpy.data.collections["{c}"])
 '''
 							else:
 								command += f'''\nbpy.context.scene.collection.children.link(bpy.data.collections["{c}"])'''
@@ -241,8 +241,8 @@ bpy.data.collections["{pp}"].children.link(bpy.data.collections["{c}"])'''
 							command += f'''\nprint("Linking Object {o.name} to Collection {c.name}")'''
 							command += f'''\nbpy.data.collections["{c.name}"].objects.link(bpy.data.objects["{o.name}"])'''
 			
-			command += f'''\ncondition = {self.export_in_root_collection} and "{self.root_collection_name}" in bpy.data.collections
-root_collection = bpy.data.collections['{self.root_collection_name}'] if condition else bpy.context.collection'''
+			command += f'''\ncondition = {self.export_in_new_collection} and "{self.new_collection_name}" in bpy.data.collections
+root_collection = bpy.data.collections['{self.new_collection_name}'] if condition else bpy.context.collection'''
 
 			# Link Dependencies in a dedicated collection
 			if self.dependencies_in_dedicated_collection and self.mode != "LINK":
