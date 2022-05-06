@@ -18,10 +18,56 @@ bl_info = {
 	"category": "Import-Export"
 }
 
+data_to_clean = ['actions',
+				'armatures',
+				'brushes',
+				'cache_files',
+				'cameras',
+				'collections',
+				'curves',
+				'fonts',
+				'grease_pencils',
+				'images',
+				'is_dirty',
+				'is_saved',
+				'lattices',
+				'libraries',
+				'lightprobes',
+				'lights',
+				'linestyles',
+				'masks',
+				'materials',
+				'meshes',
+				'metaballs',
+				'movieclips',
+				'node_groups',
+				'objects',
+				'orphans_purge',
+				'paint_curves',
+				'palettes',
+				'particles',
+				'pointclouds',
+				'rna_type',
+				'scenes',
+				'screens',
+				'shape_keys',
+				'sounds',
+				'speakers',
+				'temp_data',
+				'texts',
+				'textures',
+				'use_autopack',
+				'user_map',
+				'version',
+				'volumes',
+				'window_managers',
+				'workspaces',
+				'worlds']
+
 def update_override(self, context):
     if self.override != 'OVERRIDE':
     	self.export_to_clean_file = False
-    
+
 
 class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 	bl_idname = "export_scene.tila_export_as_blend"
@@ -471,6 +517,19 @@ except RuntimeError as e:
 				collection_hierarchy.setdefault(obj.name, parent_collection)
 		return collection_hierarchy
 
+	def clean_scene(self):
+		for d in dir(bpy.data):
+			if d in ['screens', 'workspaces']:
+				continue
+			p = getattr(bpy.data, d)
+			if isinstance(p, bpy.types.bpy_prop_collection):
+				if 'remove' in dir(p):
+					
+					for e in p:
+						if d == 'scenes':
+							if e.name == bpy.context.scene.name:
+								continue
+						p.remove(e)
 
 def delete_folder_if_exist(p):
 	if path.exists(p):
