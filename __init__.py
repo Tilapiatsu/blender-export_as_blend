@@ -5,7 +5,7 @@ import shutil
 import os
 import stat
 from os import path
-from bpy_extras.io_utils import ImportHelper
+from bpy_extras.io_utils import ExportHelper
 
 bl_info = {
 	"name": "Export as Blend",
@@ -19,7 +19,7 @@ bl_info = {
 }
 
 
-class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
+class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 	bl_idname = "export_scene.tila_export_as_blend"
 	bl_label = "Export as Blend"
 	bl_options = {'REGISTER', 'INTERNAL'}
@@ -66,7 +66,8 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ImportHelper):
 	# relink_as_library : bpy.props.BoolProperty(	name='Relink as Library',
 	#                                         	description='After export, the file is relink as a library in the current Scene',
 	#                                          	default=False)
-
+	filename_ext = '.blend'
+	
 	def draw(self, context):
 		layout = self.layout
 		col = layout.column()
