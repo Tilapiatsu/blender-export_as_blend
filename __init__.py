@@ -148,57 +148,37 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 		# command = self.generate_command(context)
 		# print(command)
 
-				
+		import_parameters = [	'-f', self.curent_file,
+								'-s', self.source,
+								'-o', self.override,
+								'-m', self.mode,
+								'-X', str(self.export_to_clean_file),
+								'-c', str(self.create_collection_hierarchy),
+								'-d', self.filepath,
+								'-N', str(self.export_in_new_collection),
+								'-n', self.new_collection_name,
+								'-D', str(self.dependencies_in_dedicated_collection),
+								'-p', str(self.pack_external_data),
+								'-S', context.scene.name,
+								'-O', self.selected_objects,
+								'-P', self.parent_collections,
+								'-C', self.selected_objects_parent_collections,
+								'-r', self.root_collection_name,
+								'-l', self.objects_collection_list,
+								'-H', self.all_objects_collection_hierarchy
+							]
 
 		if self.override == 'OVERRIDE':
 			subprocess.check_call([bpy.app.binary_path,
 						'--background',
 						'--factory-startup',
-						'--python', path.join(path.dirname(path.realpath(__file__)),'import_command.py'), '--',
-						'-f', self.curent_file,
-						'-s', self.source,
-						'-o', self.override,
-						'-m', self.mode,
-                        '-X', str(self.export_to_clean_file),
-						'-c', str(self.create_collection_hierarchy),
-						'-d', self.filepath,
-						'-N', str(self.export_in_new_collection),
-						'-n', self.new_collection_name,
-						'-D', str(self.dependencies_in_dedicated_collection),
-						'-p', str(self.pack_external_data),
-						'-S', context.scene.name,
-						'-O', self.selected_objects,
-						'-P', self.parent_collections,
-						'-C', self.selected_objects_parent_collection,
-						'-r', self.root_collection_name,
-						'-l', self.objects_collection_list,
-						'-H', self.all_objects_collection_hierarchy
-						])
+                        '--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--'] + import_parameters)
 		elif self.override == 'LINK_APPEND':
 			subprocess.check_call([bpy.app.binary_path,
 						'--background',
 						self.filepath,
 						'--factory-startup',
-						'--python', path.join(path.dirname(path.realpath(__file__)),'import_command.py'), '--',
-						'-f', self.curent_file,
-						'-s', self.source,
-						'-o', self.override,
-						'-m', self.mode,
-                        '-X', str(self.export_to_clean_file),
-						'-c', str(self.create_collection_hierarchy),
-						'-d', self.filepath,
-						'-N', str(self.export_in_new_collection),
-						'-n', self.new_collection_name,
-						'-D', str(self.dependencies_in_dedicated_collection),
-						'-p', str(self.pack_external_data),
-						'-S', context.scene.name,
-						'-O', self.selected_objects,
-						'-P', self.parent_collections,
-						'-C', self.selected_objects_parent_collection,
-						'-r', self.root_collection_name,
-						'-l', self.objects_collection_list,
-						'-H', self.all_objects_collection_hierarchy
-						])
+                        '--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--'] + import_parameters)
 
 				
 
@@ -245,7 +225,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 		for o in context.selected_objects:
 			self.selected_objects_parent_collection[o.name] = [c.name for c in o.users_collection]
 
-		self.selected_objects_parent_collection = self.get_dict_as_string(self.selected_objects_parent_collection)
+		self.selected_objects_parent_collections = self.get_dict_as_string(self.selected_objects_parent_collection)
 
 		self.all_objects_collection_hierarchy = {}
 		for o in bpy.data.objects:

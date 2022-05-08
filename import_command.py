@@ -128,7 +128,7 @@ class ImportCommand():
 			self.import_objects()
 
 	def import_scene(self):
-		print(f"Importing Scene {self.scene_name}")
+		self.log.info(f"Importing Scene {self.scene_name}")
 		filepath = os.path.join(self.source_file, 'Scene', self.scene_name)
 		directory = os.path.join(self.source_file, 'Scene')
 
@@ -142,7 +142,7 @@ class ImportCommand():
 		self.log.info("Importing Objects")
 		filepath = os.path.join(self.source_file, 'Object', self.selected_objects[0])
 		directory = os.path.join(self.source_file, 'Object')
-		files = [{"name": o, "name": o} for o in self.selected_objects[1:]]
+		files = [{"name": o, "name": o} for o in self.selected_objects]
 
 		# Import Objects
 		bpy.ops.wm.link(filepath=filepath, directory=directory, filename = self.selected_objects[0], link = self.mode == 'LINKED', files= files)
@@ -194,7 +194,7 @@ class ImportCommand():
 					self.link_object_to_collection(o, bpy.data.collections[self.new_collection_name])
      
 	def create_and_link_collection_hierarchy(self):
-		print("Create Collection Hierarchy")
+		self.log.info("Create Collection Hierarchy")
 		for c, p in self.parent_collections.items():
 			if c not in self.objects_collection_list:
 				continue
@@ -223,7 +223,8 @@ class ImportCommand():
 		for o in self.selected_objects:
 			for c in self.selected_objects_parent_collection[o]:
 				if c in self.parent_collections.keys():
-					self.move_object_to_collection(bpy.data.objects[o], self.root_collection, bpy.data.collections[c])
+					self.link_object_to_collection(bpy.data.objects[o], bpy.data.collections[c])
+			self.unlink_object_from_collection(bpy.data.objects[o], self.root_collection)
     
 	def link_dependencies_in_dedicated_collection(self):
 		if self.mode != "LINK":
@@ -298,6 +299,7 @@ class ImportCommand():
 		parent_collection.children.unlink(child_collection)
   
 	def clean_scene(self):
+		self.log.info("Cleaning Scene")
 		for d in dir(bpy.data):
 			if d in ['screens', 'workspaces']:
 				continue
