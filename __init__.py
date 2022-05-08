@@ -145,9 +145,6 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 
 		self.feed_scene_list(context)
 
-		# command = self.generate_command(context)
-		# print(command)
-
 		import_parameters = [	'-f', self.curent_file,
 								'-s', self.source,
 								'-o', self.override,
@@ -173,7 +170,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 						'--background',
 						'--factory-startup',
                         '--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--'] + import_parameters)
-		elif self.override == 'LINK_APPEND':
+		elif self.override == 'APPEND_LINK':
 			subprocess.check_call([bpy.app.binary_path,
 						'--background',
 						self.filepath,
@@ -237,166 +234,6 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 			self.all_objects_collection_hierarchy[o.name] = hierarchies
 
 		self.all_objects_collection_hierarchy = self.get_dict_as_string(self.all_objects_collection_hierarchy)
-
-	def generate_command(self, context):
-		# Base Command and define the link function
-		command = '''import bpy, os
-initial_count = len(bpy.data.objects)
-initial_objects = [o.name for o in bpy.data.objects]
-'''
-		if self.source == 'CURRENT_SCENE':
-			command += f'\nprint("Importing Scene {context.scene.name}")'
-			command += f'''\nfilepath = os.path.join(r'{self.curent_file}', 'Scene', '{context.scene.name}')
-directory = os.path.join(r'{self.curent_file}', 'Scene')
-bpy.ops.wm.append(filepath = filepath, directory = directory, filename = "{context.scene.name}"'''
-		elif self.source == 'SELECTED_OBJECTS':
-			# Import Objects
-			command += f'\nprint("Importing Objects")'
-			command += f'''\nfilepath = os.path.join(r'{self.curent_file}', 'Object', '{self.selected_objects[0].name}')
-directory = os.path.join(r'{self.curent_file}', 'Object')
-bpy.ops.wm.link(filepath = filepath, directory = directory, filename = "{self.selected_objects[0].name}", link = {self.is_linked}'''
-			if len(self.selected_objects) > 1:
-				command += f', files=['
-				for i, o in enumerate(self.selected_objects):
-					command += '{'
-					command += f'"name":"{o.name}", "name":"{o.name}"'
-					if i < len(self.selected_objects)-1:
-						command += '},'
-					else:
-						command += '}]'
-				command += ')'
-			else:
-				command += ')'
-
-			# Register imported_objects
-			command += '\nimported_objects = [o for o in bpy.data.objects if o.name not in initial_objects]'
-   
-			# Create New Collection and Link all imported object in it
-			if self.export_in_new_collection:
-				if self.new_collection_name == '':
-					self.report({'ERROR'}, 'Export As Blend : Root collection name is empty, skipping root collection creation.')
-					self.export_in_new_collection = False
-				else:
-					command += f'''\nif '{self.new_collection_name}' not in bpy.data.collections:
-	bpy.data.collections.new('{self.new_collection_name}')
-	bpy.context.collection.children.link(bpy.data.collections['{self.new_collection_name}'])
- '''				
-					if self.mode != 'LINK':
-						command += f'''\nfor o in imported_objects:
-	print('Unlinking object ' + o.name + ' from collection ' + bpy.context.collection.name)
-	bpy.context.collection.objects.unlink(o)
-	bpy.data.collections['{self.new_collection_name}'].objects.link(o)
- '''
-			# Set root_collection
-			command += f'''\ncondition = {self.export_in_new_collection} and "{self.new_collection_name}" in bpy.data.collections
-root_collection = bpy.data.collections['{self.new_collection_name}'] if condition else bpy.context.collection'''
-				
-			# Create Collection Hierarchy
-			if self.create_collection_hierarchy:
-				command += f'''\nprint("Create Collection Hierarchy")'''
-				for c, p in self.parent_collections.items():
-					if c not in self.objects_collection_list:
-						continue
-					for i, pp in enumerate(p):
-						if pp not in self.objects_collection_list:
-							continue
-
-						command += f'''\nprint("Linking Collection {c} to {pp}")'''
-						if i == 0:
-							command += f'''\nbpy.data.collections.new('{c}')'''
-
-						if pp == self.root_collection.name:
-							if self.export_in_new_collection:
-								command += f'''\nbpy.data.collections['{self.new_collection_name}'].children.link(bpy.data.collections["{c}"])'''
-							else:
-								command += f'''\nbpy.context.scene.collection.children.link(bpy.data.collections["{c}"])'''
-						else:
-							command += f'''\nif "{pp}" not in bpy.data.collections:
-	bpy.data.collections.new('{pp}')
-
-if '{c}' not in bpy.data.collections["{pp}"].children:
-	bpy.data.collections["{pp}"].children.link(bpy.data.collections['{c}'])
-'''
- 
-				
-				command += f'''\nprint("Link Objects to Collection")'''
-
-    			# Link Object to collections
-				for o in self.selected_objects:
-					for c in o.users_collection:
-						if c.name in self.parent_collections.keys():
-							command += f'''\nprint("Move Object {o.name} to Collection {c.name}")'''
-							command += f'''\nroot_collection.objects.unlink(bpy.data.objects["{o.name}"])'''
-							command += f'''\nbpy.data.collections["{c.name}"].objects.link(bpy.data.objects["{o.name}"])'''
-
-			# Link Dependencies in a dedicated collection
-			if self.dependencies_in_dedicated_collection and self.mode != "LINK":
-				command += f'''\nif {len(self.selected_objects)} < len(bpy.data.objects) - initial_count:
-	bpy.data.collections.new('Dependencies')
-	root_collection.children.link(bpy.data.collections["Dependencies"])
- 
-	for o in imported_objects:
-		if o.name in {self.get_object_list_name(self.selected_objects)}:
-			continue
-		if o.name not in root_collection.objects:
-			continue
-   
-		print("Move Object " + o.name + " to Dependencies Collection ")
-		root_collection.objects.unlink(bpy.data.objects[o.name])
-		bpy.data.collections["Dependencies"].objects.link(bpy.data.objects[o.name])
-'''
-			# Link Dependencies in its respective collection from source blend file
-			elif not self.dependencies_in_dedicated_collection and self.create_collection_hierarchy:
-				command += f'''\nif {len(self.selected_objects)} < len(bpy.data.objects) - initial_count:
-	for o in imported_objects:
-		if o.name in {self.get_object_list_name(self.selected_objects)}:
-			continue
-		
-		all_collection_hierarchy = {self.get_all_objects_collection_hierarchy_as_string()}
-
-		for obj,h in all_collection_hierarchy.items():
-			if obj != o.name:
-				continue
-			if obj not in root_collection.objects:
-				continue
-	
-			for hh in h:
-				hierarchy = list(reversed(hh))
-				for i,c in enumerate(hierarchy):
-					if i == 0:
-						if c not in bpy.data.collections:
-							bpy.data.collections.new(c)
-							root_collection.children.link(bpy.data.collections[c])
-
-						if c not in root_collection.children:
-							root_collection.children.link(bpy.data.collections[c])
-					else:
-						if c not in bpy.data.collections:
-							bpy.data.collections.new(c)
-						
-						if c not in bpy.data.collections[hierarchy[i-1]].children:
-							bpy.data.collections[hierarchy[i-1]].children.link(bpy.data.collections[c])
-				else:
-					print("Move dependency Object " + o.name + " to Collection " +  c)
-					root_collection.objects.unlink(bpy.data.objects[o.name])
-					bpy.data.collections[hierarchy[len(hierarchy)-1]].objects.link(bpy.data.objects[o.name])
-'''
-# 			# Link Dependencies in New Collection
-# 			elif self.export_in_new_collection and not self.create_collection_hierarchy:
-# 				command += f'''\nif {len(self.selected_objects)} < len(bpy.data.objects) - initial_count:
-# 	for o in imported_objects:
-# 		if o.name in {self.get_object_list_name(self.selected_objects)}:
-# 			continue
-# 		bpy.context.collection.objects.unlink(bpy.data.objects[o.name])
-# 		root_collection.objects.link(bpy.data.objects[o.name])
-# '''
-		if self.pack_external_data and self.mode == 'APPEND':
-			command += '''\ntry:
-	bpy.ops.file.pack_all()
-except RuntimeError as e:
-	print("Cannot pack data or data does not exist on drive.  " + e)'''
-		command += f"\nbpy.ops.wm.save_as_mainfile('EXEC_DEFAULT',filepath=r'{self.filepath}')"
-		return command
 
 	def get_object_list_name(self, object_list):
 		string_names = '['
