@@ -1,7 +1,8 @@
-import bpy
+import bpy, bpy_extras
 import subprocess
 import tempfile
 import shutil
+import re
 import os
 import stat
 from os import path
@@ -22,7 +23,7 @@ def update_override(self, context):
     if self.override != 'OVERRIDE':
     	self.export_to_clean_file = False
 
-class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
+class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 	bl_idname = "export_scene.tila_export_as_blend"
 	bl_label = "Export as Blend"
 	bl_options = {'REGISTER', 'INTERNAL'}
@@ -119,9 +120,15 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 		box.prop(self, 'open_exported_blend')
 		# col.prop(self, 'relink_as_library')
 
-	@property
-	def is_linked(self):
-		return self.mode == "LINK"
+	def __init__(self):
+		self.objects_dict = {}
+		self._selected_objects = None
+		self._parent_collections = None
+		self._objects_collection_hierarchy = None
+		self._selected_objects_parent_collection = None
+		self._all_objects_collection_hierarchy = None
+		self._all_objects = None
+		self._all_collections = None
 
 	def execute(self, context):
 		ext = path.splitext(self.filepath)[1].lower()
@@ -157,7 +164,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 								'-D', str(self.dependencies_in_dedicated_collection),
 								'-p', str(self.pack_external_data),
 								'-S', context.scene.name,
-								'-O', self.selected_objects,
+								'-O', str(self.selected_objects),
 								'-P', self.parent_collections,
 								'-C', self.selected_objects_parent_collections,
 								'-r', self.root_collection_name,
@@ -200,11 +207,13 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, ExportHelper):
 		if saved_to_temp_folder:
 			delete_folder_if_exist(self.tmpdir)
 
+		self.__init__()
 		return {'FINISHED'}
 
 	def feed_scene_list(self, context):
 		self.selected_objects = self.get_object_list_name(context.selected_objects)
 		parent_collections = self.parent_lookup(context.scene.collection)
+		self.root_collection_name = context.scene.collection.name
 		self.parent_collections = self.get_dict_as_string(parent_collections)
 		self.root_collection_name = context.scene.collection.name
 		self.collections_in_scene = [c.name for c in bpy.data.collections if bpy.context.scene.user_of_id(c)]
