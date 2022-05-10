@@ -2,11 +2,9 @@ import bpy, bpy_extras
 import subprocess
 import tempfile
 import shutil
-import re
 import os
 import stat
 from os import path
-from bpy_extras.io_utils import ExportHelper
 
 bl_info = {
 	"name": "Export as Blend",

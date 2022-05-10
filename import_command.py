@@ -49,7 +49,7 @@ class ImportCommand():
 	# 						self.fix_list_conflicts(i.name, f)
 	# 					elif isinstance(f['value'], dict):
 	# 						self.fix_dict_conflicts(i.name, f)
-       
+	   
 	# 				func(self, *args, **kwargs)['conflicts_fixed'] = True
 	# 				print(func(self, *args, **kwargs))
 	# 			return func(self, *args, **kwargs)['value']
@@ -132,8 +132,8 @@ class ImportCommand():
 															"source=",
 															"override=",
 															"mode=",
-                                                            "export_to_clean_file=",
-                                                            "create_collection_hierarchy=",
+															"export_to_clean_file=",
+															"create_collection_hierarchy=",
 															"destination=",
 															"export_in_new_collection=",
 															"new_collection_name=",
@@ -142,7 +142,7 @@ class ImportCommand():
 															"scene_name=",
 															"selected_objects=",
 															"parent_collections=",
-                                                            "selected_objects_parent_collection=",
+															"selected_objects_parent_collection=",
 															"root_collection_name=",
 															"objects_collection_list=",
 															"all_objects_collection_hierarchy="
@@ -210,8 +210,8 @@ class ImportCommand():
 			print(e)
 			bpy.ops.wm.save_as_mainfile('EXEC_DEFAULT', filepath=self.destination + '.blend')
 			subprocess.Popen([bpy.app.binary_path,
-                            self.destination + '.blend'
-                     ])
+							self.destination + '.blend'
+					 ])
 
 	def import_scene(self):
 		self.log.info(f"Importing Scene {self.scene_name}")
@@ -221,38 +221,38 @@ class ImportCommand():
 
 		# Import Scene
 		bpy.ops.wm.append(	filepath=filepath,
-                    		directory=directory,
-		                  	filename=self.scene_name
-                     	)
+							directory=directory,
+						  	filename=self.scene_name
+					 	)
 	
 	def import_objects(self):
 		self.log.info("Importing Objects")
 
 		self.scene_root_collection = bpy.context.scene.collection
 
-		# Create Import Collection
+		# Create Import Collection and set active
 		self.create_collection(IMPORT_COLLECTION_NAME)
-		self.link_collection_to_collection(bpy.data.collections[IMPORT_COLLECTION_NAME], bpy.context.collection)
+		self.link_collection_to_collection(bpy.data.collections[IMPORT_COLLECTION_NAME], bpy.context.scene.collection)
 		self.import_collection_name = IMPORT_COLLECTION_NAME
    
 		self.set_collection_active(IMPORT_COLLECTION_NAME)
 
-		self.incoming_object_names = list(self.selected_objects.keys())
-		self.local_object_names = list(self.selected_objects.values())
-		filepath = os.path.join(self.source_file, 'Object', self.incoming_object_names[0])
+		filepath = os.path.join(self.source_file, 'Object', self.selected_objects[0])
 		directory = os.path.join(self.source_file, 'Object')
-		files = [{"name": o, "name": o} for o in self.incoming_object_names]
+		files = [{"name": o, "name": o} for o in self.selected_objects]
    
 		# Import Objects
-		bpy.ops.wm.link(filepath=filepath, directory=directory,
-		                filename=self.incoming_object_names[0], link=self.mode == 'LINKED', files=files)
-
-		for o in bpy.data.collections[IMPORT_COLLECTION_NAME].objects:
-			print(o.name)
+		# bpy.ops.wm.link(filepath=filepath, directory=directory,
+		# 				filename=self.selected_objects[0], link=True, files=files)
+		
+		self.link_objects(self.source_file, self.selected_objects, bpy.data.collections[IMPORT_COLLECTION_NAME])
+    
+  		# Register imported_objects
+		self.imported_objects = [o for o in bpy.data.collections[IMPORT_COLLECTION_NAME].objects]
 		self.set_collection_active(self.scene_root_collection.name)
+  
 		bpy.ops.wm.save_as_mainfile('EXEC_DEFAULT', filepath=self.destination+'.blend')
-		# Register imported_objects
-		self.imported_objects = [o for o in bpy.data.objects if o.name not in self.initial_objects]
+
 
 		# Create New Collection and Link all imported object in it
 		if self.export_in_new_collection:
@@ -282,10 +282,10 @@ class ImportCommand():
 		if self.pack_external_data and self.mode == 'APPEND':
 			try:
 				bpy.ops.file.pack_all()
-    
+	
 			except RuntimeError as e:
 				self.log.error("Cannot pack data or data does not exist on drive.  " + e)
-    
+	
 		# Save File
 		bpy.ops.wm.save_as_mainfile('EXEC_DEFAULT', filepath=self.destination)
 
@@ -319,7 +319,7 @@ class ImportCommand():
 					self.unlink_object_from_collection(o, bpy.data.collections[self.import_collection_name])
 					self.link_object_to_collection(o, bpy.data.collections[self.new_collection_name])
 
-     
+	 
 	def create_and_link_collection_hierarchy(self):
 		self.log.info("Create Collection Hierarchy")
 		tip_coll = None
@@ -351,33 +351,33 @@ class ImportCommand():
 		
 		# Link Object to collections
 		self.log.info("Link Objects to Collection")
-		for o in self.local_object_names:
-			for c in self.selected_objects_parent_collection[self.get_valid_incoming_object_name(o)]:
+		for o in self.selected_objects:
+			for c in self.selected_objects_parent_collection[o]:
 				c = self.get_valid_collection_name(c)
 				if c in self.parent_collections.keys():
 					self.link_object_to_collection(bpy.data.objects[o], bpy.data.collections[c])
 			self.unlink_object_from_collection(bpy.data.objects[o], self.root_collection)
-    
+	
 	def link_dependencies_in_dedicated_collection(self):
 		if self.mode != "LINK":
 			self.log.info('Link Dependencies in "Dependencies" collection')
-			if len(self.incoming_object_names) < len(bpy.data.objects) - self.initial_count:
+			if len(self.selected_objects) < len(bpy.data.objects) - self.initial_count:
 				self.create_collection('Dependencies')
 				self.link_collection_to_collection(bpy.data.collections["Dependencies"], self.root_collection)
 
 				for o in self.imported_objects:
-					if o.name in self.local_object_names:
+					if o.name in self.selected_objects:
 						continue
 					if o.name not in self.root_collection.objects:
 						continue
 
 					self.move_object_to_collection(bpy.data.objects[o.name], self.root_collection, bpy.data.collections["Dependencies"])
-    
+	
 	def link_dependencies_in_their_respective_collection(self):
 		self.log.info('Link Dependencies to their respective collection')
-		if len(self.incoming_object_names) < len(bpy.data.objects) - self.initial_count:
+		if len(self.selected_objects) < len(bpy.data.objects) - self.initial_count:
 			for o in self.imported_objects:
-				if o.name in self.local_object_names:
+				if o.name in self.selected_objects:
 					continue
 
 				for obj, h in self.all_objects_collection_hierarchy.items():
@@ -401,7 +401,7 @@ class ImportCommand():
 							else:
 								if c not in bpy.data.collections:
 									self.create_collection(c)
-         
+		 
 								c = self.get_valid_collection_name(c)
 								parent_coll = self.get_valid_collection_name(hierarchy[i-1])
 								if c not in bpy.data.collections[parent_coll].children:
@@ -470,7 +470,6 @@ class ImportCommand():
 							if e.name == bpy.context.scene.name:
 								continue
 						p.remove(e)
-	
  
 	def get_valid_collection_name(self, original_name):
 		if original_name in bpy.data.collections:
@@ -481,13 +480,21 @@ class ImportCommand():
 		else:
 			return original_name
 
-	def get_valid_incoming_object_name(self, local_name):
-		if local_name in self.selected_objects.values():
-			for key, value in self.selected_objects.items():
-				if local_name == value:
-					return key
-		else:
-			return local_name
+	def link_objects(self, blend_file, object_names, collection):
+		self.log.info(f'Linking objects in target file {blend_file}')
+		def library_link_all(data_blocks, libpath, collection):
+			for x in data_blocks:
+				if x.library is not None:
+					if os.path.normpath(libpath) == os.path.normpath(x.library.filepath):
+						collection.objects.link(x)
+      
+		# Link objects
+		with bpy.data.libraries.load(blend_file, link=True) as (data_from, data_to):
+			for name in data_from.objects:
+				if name in object_names:
+					data_to.objects.append(name)
+		
+		library_link_all(bpy.data.objects, blend_file, collection)
  
 def unique_name_clean_func(name):
 	word_pattern = re.compile(r'(\.[0-9]{3})$', re.IGNORECASE)
