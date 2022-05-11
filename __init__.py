@@ -344,19 +344,6 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 				collection_hierarchy.setdefault(obj.name, parent_collection)
 		return collection_hierarchy
 
-	def clean_scene(self):
-		for d in dir(bpy.data):
-			if d in ['screens', 'workspaces']:
-				continue
-			p = getattr(bpy.data, d)
-			if isinstance(p, bpy.types.bpy_prop_collection):
-				if 'remove' in dir(p):
-					for e in p:
-						if d == 'scenes':
-							if e.name == bpy.context.scene.name:
-								continue
-						p.remove(e)
-
 
 def delete_folder_if_exist(p):
 	if path.exists(p):
