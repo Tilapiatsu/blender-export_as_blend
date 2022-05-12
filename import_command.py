@@ -137,7 +137,7 @@ class ImportCommand():
 				self.all_objects_collection_hierarchy = eval(arg)
 
 	def import_command(self):
-		if self.export_to_clean_file:
+		if self.export_to_clean_file and self.override == "OVERRIDE":
 			self.clean_scene()
 
 		self.initial_count = len(bpy.data.objects)
@@ -240,27 +240,34 @@ class ImportCommand():
 		for c, p in self.parent_collections.items():
 			if c not in self.objects_collection_list:
 				continue
-
+			
 			new_coll = None
 			for i, pp in enumerate(p):
 				if pp not in self.objects_collection_list:
 					continue
+				
+				self.log.debug(f'incomming pp : {pp}')
  
 				if i == 0:
 					tip_coll = self.create_collection(c)
 
 				if pp == self.root_collection_name:
 					if self.export_in_new_collection:
+						self.log.debug(f'root collection {self.new_collection_name}' )
 						self.link_collection_to_collection(tip_coll, bpy.data.collections[self.new_collection_name])
 				else:
 					pp = self.get_valid_collection_name(pp)
+					self.log.debug(f'solved pp : {pp}')
 					if pp not in bpy.data.collections:
+						self.log.debug('Creating new collection')
 						new_coll = self.create_collection(pp)
 						pp = self.get_valid_collection_name(pp)
-					else:
+					
+					if new_coll is None:
 						new_coll = bpy.data.collections[pp]
 
-					if c not in new_coll.children:
+					if self.get_valid_collection_name(c) not in new_coll.children:
+						self.log.debug('Linking if needed')
 						self.link_collection_to_collection(tip_coll, new_coll)
 		
 		# Link Object to collections
@@ -303,6 +310,7 @@ class ImportCommand():
 						hierarchy = list(reversed(hh))
 						for i, c in enumerate(hierarchy):
 							c = self.get_valid_collection_name(c)
+							print(c)
 							if i == 0:
 								if c not in bpy.data.collections:
 									self.create_collection(c)

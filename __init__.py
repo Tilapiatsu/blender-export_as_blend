@@ -17,9 +17,6 @@ bl_info = {
 	"category": "Import-Export"
 }
 
-def update_override(self, context):
-    if self.override != 'OVERRIDE':
-    	self.export_to_clean_file = False
 
 class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 	bl_idname = "export_scene.tila_export_as_blend"
@@ -44,8 +41,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 
 	override :bpy.props.EnumProperty(
 		items=[("OVERRIDE", "Override", ""), ("APPEND_LINK", "Append/Link", "")],
-  		description = ' Choose what behaviour you want if you have choosen an existing file',
-    	update=update_override)
+  		description = ' Choose what behaviour you want if you have choosen an existing file')
  
 	mode: bpy.props.EnumProperty(
 		items=[("APPEND", "Append", ""), ("LINK", "Link", "")],
