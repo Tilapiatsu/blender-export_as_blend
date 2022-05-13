@@ -1,4 +1,6 @@
-import bpy, bpy_extras
+import bpy
+import bpy_extras
+import textwrap
 import subprocess
 import tempfile
 import shutil
@@ -17,6 +19,12 @@ bl_info = {
 	"category": "Import-Export"
 }
 
+def _label_multiline(context, text, parent):
+	chars = int(context.region.width / 7)   # 7 pix on 1 character
+	wrapper = textwrap.TextWrapper(width=chars)
+	text_lines = wrapper.wrap(text=text)
+	for text_line in text_lines:
+		parent.label(text=text_line)
 
 class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 	bl_idname = "export_scene.tila_export_as_blend"
@@ -36,15 +44,17 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 
 	files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement)
 	source: bpy.props.EnumProperty(
-     				items=[("SELECTED_OBJECTS", "Selected Objects", ""),
-                			("CURRENT_SCENE", "Current Scene", "")])
+	 				items=[("SELECTED_OBJECTS", "Selected Objects", ""),
+							("CURRENT_SCENE", "Current Scene", "")])
 
-	override :bpy.props.EnumProperty(
+	file_override :bpy.props.EnumProperty(
 		items=[("OVERRIDE", "Override", ""), ("APPEND_LINK", "Append/Link", "")],
+		name='File Override',
   		description = ' Choose what behaviour you want if you have choosen an existing file')
  
-	mode: bpy.props.EnumProperty(
+	export_mode: bpy.props.EnumProperty(
 		items=[("APPEND", "Append", ""), ("LINK", "Link", "")],
+		name='Export Mode',
   		description='Choose how you want the data to be transfered from the current file.')
 	
 	create_collection_hierarchy: bpy.props.BoolProperty(name='Create Collection Hierarchy',
@@ -57,7 +67,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 																description='Each objects, dependencies and collection hierarchy will be placed in a new collection',
 																default=False)
 	new_collection_name: bpy.props.StringProperty(name='Root Collection name',
-                                                	description='Name of the new collection that will be created',
+													description='Name of the new collection that will be created',
 													default='Root Collection')
 	dependencies_in_dedicated_collection: bpy.props.BoolProperty(name='Export dependencies in dedicated collection',
 																		description='Each object dependencies are put in a dedicated collection named "Dependencies". If unchecked, each dependencies will be placed their respective collection from the source blend file',
@@ -91,14 +101,14 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		r = col.row()
 		r.prop(self, 'source', expand=True)
 		r = col.row()
-		r.prop(self, 'override', expand=True)
+		r.prop(self, 'file_override', expand=True)
 		r = col.row()
-		r.prop(self, 'mode', expand=True)
+		r.prop(self, 'export_mode', expand=True)
   
-		if self.mode == "APPEND":
+		if self.export_mode == "APPEND":
 			box.prop(self, 'pack_external_data')
 
-		if self.override == 'OVERRIDE':
+		if self.file_override == 'OVERRIDE':
 			box.prop(self, 'export_to_clean_file')
 
 		if self.source == "SELECTED_OBJECTS":
@@ -113,6 +123,36 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 
 		box.prop(self, 'open_exported_blend')
 		# col.prop(self, 'relink_as_library')
+
+		box = col.box()
+		source = 'Selected objects' if self.source == 'SELECTED_OBJECTS' else 'The current scene'
+		file_override = 'overriding' if self.file_override == 'OVERRIDE' else 'appending/linking in'
+		export_mode = 'appended' if self.export_mode ==  'APPEND' else 'linked'
+		if self.file_override == 'OVERRIDE':
+			export_to_clean_file = ' Data will be exported to a clean file.' if self.export_to_clean_file else ' Data will be exported to your startup file.'
+			
+		else:
+			export_to_clean_file = ''
+
+		if self.source == 'SELECTED_OBJECTS':
+			create_collection_hierarchy = ' The collection hierarchy of selected objects will be preserved.' if self.create_collection_hierarchy else f' Selected objects will be exported without its collections.'
+			dependencies_in_dedicated_collection = ' All objects will be placed under a "Dependencies" collection.' if self.dependencies_in_dedicated_collection else ' Each object dependencies will be exported into its dedicated collection.'
+			export_in_new_collection = f' All Objects and Dependencies will be exported in a root collection called "{self.new_collection_name}".' if self.export_in_new_collection else ''
+		else:
+			create_collection_hierarchy = ''
+			dependencies_in_dedicated_collection = ''
+			export_in_new_collection = ''
+
+		pack_external_data = 'all external data will be packed into blend file' if self.pack_external_data else ''
+		open_exported_blend = 'the exported file will be opened.' if self.open_exported_blend else ''
+
+		if len(pack_external_data) and len(open_exported_blend):
+			open_exported_blend = 'and ' + open_exported_blend
+
+		text = f'''{source} will be {export_mode} from current file, {file_override} selected file.{export_to_clean_file}{create_collection_hierarchy}{dependencies_in_dedicated_collection}{export_in_new_collection}'''
+		_label_multiline(context=context, text=text, parent=layout)
+		text = f'''Once exported, {pack_external_data} {open_exported_blend}'''
+		_label_multiline(context=context, text=text, parent=layout)
 
 	def __init__(self):
 		self.objects_dict = {}
@@ -142,14 +182,14 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			saved_to_temp_folder = False
 
 		if not path.exists(self.filepath):
-			self.override == 'OVERRIDE'
+			self.file_override == 'OVERRIDE'
 
 		self.feed_scene_list(context)
 
 		import_parameters = [	'-f', self.curent_file,
 								'-s', self.source,
-								'-o', self.override,
-								'-m', self.mode,
+								'-o', self.file_override,
+								'-m', self.export_mode,
 								'-X', str(self.export_to_clean_file),
 								'-c', str(self.create_collection_hierarchy),
 								'-d', self.filepath,
@@ -166,17 +206,17 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 								'-H', self.all_objects_collection_hierarchy
 							]
 
-		if self.override == 'OVERRIDE':
+		if self.file_override == 'OVERRIDE':
 			subprocess.check_call([bpy.app.binary_path,
 						'--background',
 						'--factory-startup',
-                        '--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--'] + import_parameters)
-		elif self.override == 'APPEND_LINK':
+						'--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--'] + import_parameters)
+		elif self.file_override == 'APPEND_LINK':
 			subprocess.check_call([bpy.app.binary_path,
 						'--background',
 						self.filepath,
 						'--factory-startup',
-                        '--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--'] + import_parameters)
+						'--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--'] + import_parameters)
 
 				
 
