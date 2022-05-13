@@ -1,5 +1,5 @@
 import sys, getopt, bpy, os, bpy_extras, bpy_types
-import re, subprocess
+import re
 
 IMPORT_COLLECTION_NAME = 'TILA_IMPORT_COLLECTION'
 DEPENDENCIES_COLLECTION_NAME = 'Dependencies'
@@ -281,6 +281,17 @@ class ImportCommand():
 		elif self.source == 'SELECTED_OBJECTS':
 			self.import_objects()
 
+		# Pack Files
+		if self.pack_external_data and self.mode == 'APPEND':
+			try:
+				bpy.ops.file.pack_all()
+
+			except RuntimeError as e:
+				self.log.error("Cannot pack data or data does not exist on drive.  " + e)
+
+		# Save File
+		bpy.ops.wm.save_as_mainfile('EXEC_DEFAULT', filepath=self.destination)
+
 	def import_scene(self):
 		self.log.info(f"Importing Scene {self.scene_name}")
 
@@ -290,9 +301,13 @@ class ImportCommand():
 		# Import Scene
 		bpy.ops.wm.append(	filepath=filepath,
 							directory=directory,
-						  	filename=self.scene_name
-					 	)
-	
+						  	filename=self.scene_name,
+							link=self.mode == 'LINK'
+					 	 )
+
+		if self.export_to_clean_file and self.override == "OVERRIDE" and self.mode == "APPEND":
+			bpy.data.scenes.remove(bpy.data.scenes[bpy.context.scene.name])
+
 	def import_objects(self):
 		self.log.info("Importing Objects")
 
@@ -331,18 +346,6 @@ class ImportCommand():
 		bpy.data.collections.remove(bpy.data.collections[IMPORT_COLLECTION_NAME])
 		if self.mode == 'APPEND':
 			self.make_imported_objects_local()
-
-		# Pack Files
-		if self.pack_external_data and self.mode == 'APPEND':
-			try:
-				bpy.ops.file.pack_all()
-	
-			except RuntimeError as e:
-				self.log.error("Cannot pack data or data does not exist on drive.  " + e)
-	
-		# Save File
-		bpy.ops.wm.save_as_mainfile('EXEC_DEFAULT', filepath=self.destination)
-	
 
 	# Main Flow Methods
 	def create_and_link_to_new_collection(self):
@@ -450,7 +453,6 @@ class ImportCommand():
 							self.cm.move_object_to_collection(self.imported_objects[o], self.root_collection, parent_coll)
 	
 	# Helper Methods
-
 	def clean_scene(self):
 		self.log.info("Cleaning Scene")
 		for d in dir(bpy.data):
