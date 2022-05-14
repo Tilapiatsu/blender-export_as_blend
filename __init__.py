@@ -124,7 +124,8 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		box.prop(self, 'open_exported_blend')
 		# col.prop(self, 'relink_as_library')
 
-		box = col.box()
+		# Operation Description
+		box = layout.box()
 		source = 'Selected objects' if self.source == 'SELECTED_OBJECTS' else 'The current scene'
 		file_override = 'overriding' if self.file_override == 'OVERRIDE' else 'appending/linking in'
 		export_mode = 'appended' if self.export_mode ==  'APPEND' else 'linked'
@@ -135,7 +136,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			export_to_clean_file = ''
 
 		if self.source == 'SELECTED_OBJECTS':
-			create_collection_hierarchy = ' The collection hierarchy of selected objects will be preserved.' if self.create_collection_hierarchy else f' Selected objects will be exported without its collections.'
+			create_collection_hierarchy = ' The collection hierarchy of selected objects will be preserved.' if self.create_collection_hierarchy else f' Selected objects will be exported without its collection hierarchy.'
 			dependencies_in_dedicated_collection = ' All objects will be placed under a "Dependencies" collection.' if self.dependencies_in_dedicated_collection else ' Each object dependencies will be exported into its dedicated collection.'
 			export_in_new_collection = f' All Objects and Dependencies will be exported in a root collection called "{self.new_collection_name}".' if self.export_in_new_collection else ''
 		else:
@@ -150,9 +151,11 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			open_exported_blend = 'and ' + open_exported_blend
 
 		text = f'''{source} will be {export_mode} from current file, {file_override} selected file.{export_to_clean_file}{create_collection_hierarchy}{dependencies_in_dedicated_collection}{export_in_new_collection}'''
-		_label_multiline(context=context, text=text, parent=layout)
-		text = f'''Once exported, {pack_external_data} {open_exported_blend}'''
-		_label_multiline(context=context, text=text, parent=layout)
+		_label_multiline(context=context, text=text, parent=box)
+
+		if len(pack_external_data) or len(open_exported_blend):
+			text = f'''Once exported, {pack_external_data} {open_exported_blend}'''
+			_label_multiline(context=context, text=text, parent=box)
 
 	def __init__(self):
 		self.objects_dict = {}
