@@ -1,13 +1,18 @@
-import sys, getopt, bpy, os, bpy_extras, bpy_types
+import sys
+import bpy
+import os
+import bpy_extras
+import bpy_types
+import argparse
 import re
 
 IMPORT_COLLECTION_NAME = 'TILA_IMPORT_COLLECTION'
 DEPENDENCIES_COLLECTION_NAME = 'Dependencies'
 
 class Logger(object):
-	def __init__(self, addon_name='ROOT', debug_mode=False):
+	def __init__(self, addon_name='ROOT', print=False):
 		self.addon_name = addon_name
-		self.debug_mode = debug_mode
+		self.print = print
 
 	def info(self, message):
 		self.print_message(message, 'INFO')
@@ -22,7 +27,7 @@ class Logger(object):
 		self.print_message(message, 'ERROR')
 
 	def print_message(self, message, mode):
-		if self.debug_mode:
+		if self.print:
 			print(f'{self.addon_name} : {mode} : {message}')
 
 
@@ -30,8 +35,9 @@ class CollectionManager(object):
 
 	collection_objects_correspondance = {}
 
-	def __init__(self, debug=False):
-		self.log = Logger(addon_name='CollectionManager', debug_mode=debug)
+	def __init__(self, print_message=False):
+		self.log = Logger(addon_name='CollectionManager',
+		                  print=print_message)
 		self.collection_list = []
 
 		# init collection_name
@@ -120,10 +126,10 @@ class CollectionManager(object):
 
 
 class Collection(CollectionManager):
-	def __init__(self, string, debug=False):
-		super(Collection, self).__init__(debug)
+	def __init__(self, string, print_message=False):
+		super(Collection, self).__init__(print_message)
 		self._string = {'incoming':string, 'local':string}
-		self.log = Logger(addon_name='Collection', debug_mode=debug)
+		self.log = Logger(addon_name='Collection', print=print_message)
 
 	@property
 	def incoming_name(self):
@@ -162,16 +168,15 @@ class Collection(CollectionManager):
 				self._string['local'] = self.collection_objects_correspondance[bpy.data.collections[self.incoming_name]]
 
 	
-
 class ImportCommand():
-	def __init__(self, argv, debug=False):
+	def __init__(self, argv):
 		self.parse_argsv(argv[argv.index("--") + 1:])
-		self.debug = debug
-		self.log = Logger(addon_name='Import Command', debug_mode=debug)
+		self.init_source_lists()
+		self.log = Logger(addon_name='Import Command', print=self.print_debug)
 		self._imported_objects = None
 		self._valid_collections = None
-		self.cm = CollectionManager(debug)
-		
+		self.cm = CollectionManager(self.print_debug)
+
 	# Properties
 	@property
 	def imported_objects(self):
@@ -180,109 +185,152 @@ class ImportCommand():
 				self._imported_objects = {o.name:o for o in bpy.data.objects if o.library != None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
 		return self._imported_objects
 	
-	# need to convert to argparse instead of getopt
-	def parse_argsv(self, argv):
-		help_command = f'{argv[0]}'
-		help_command += ' -f <source_file>'
-		help_command += ' -s <source> '
-		help_command += ' -o <override>'
-		help_command += ' -m <mode>'
-		help_command += ' -X <export_to_clean_file>'
-		help_command += ' -c <create_collection_hierarchy>'
-		help_command += ' -d <destination>'
-		help_command += ' -N <export_in_new_collection>'
-		help_command += ' -n <new_collection_name>'
-		help_command += ' -D <dependencies_in_dedicated_collection>'
-		help_command += ' -p <pack_external_data>'
-		help_command += ' -S <scene_name> '
-		help_command += ' -O <selected_objects>'
-		help_command += ' -P <parent_collections>'
-		help_command += ' -C <selected_objects_parent_collection>'
-		help_command += ' -r <root_collection_name>'
-		help_command += ' -l <objects_collection_list>'
-		help_command += ' -H <all_objects_collection_hierarchy>'
-		try:
-			print('Parsing argv...')
-			opts, args = getopt.getopt(argv, "hf:s:o:m:X:c:d:N:n:D:p:S:O:C:P:r:l:H:", ["help",
-															"source_file=",
-															"source=",
-															"override=",
-															"mode=",
-															"export_to_clean_file=",
-															"create_collection_hierarchy=",
-															"destination=",
-															"export_in_new_collection=",
-															"new_collection_name=",
-															"dependencies_in_dedicated_collection=",
-															"pack_external_data=",
-															"scene_name=",
-															"selected_objects=",
-															"parent_collections=",
-															"selected_objects_parent_collection=",
-															"root_collection_name=",
-															"objects_collection_list=",
-															"all_objects_collection_hierarchy="
-														])
-		except:
-			print(help_command)
-			sys.exit(2)
+	def init_source_lists(self):
+		with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
+			for s in data_from.scenes:
+				data_to.scenes.append(s)
+			for c in data_from.collections:
+				data_to.collections.append(c)
+			for o in data_from.objects:
+				data_to.objects.append(o)
+			
+		objects = {o.name:o for o in bpy.data.objects if o.library is not None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
+		collections = {c.name:c for c in bpy.data.collections if c.library is not None and os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file)}
+		scenes = {s.name:s for s in bpy.data.scenes if s.library is not None and os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file)}
 		
-		for opt, arg in opts:
-			print(opt, '=', arg)
-			if opt in ("-h", "--help"):
-				print(help_command)  # print the help message
-				sys.exit(2)
-			elif opt in ("-f", "--source_file"):
-				self.source_file = arg
-			elif opt in ("-s", "--source"):
-				self.source = arg
-			elif opt in ("-o", "--override"):
-				self.override = arg
-			elif opt in ("-m", "--mode"):
-				self.mode = arg
-			elif opt in ("-X", "--export_to_clean_file"):
-				self.export_to_clean_file = eval(arg)
-			elif opt in ("-c", "--create_collection_hierarchy"):
-				self.create_collection_hierarchy = eval(arg)
-			elif opt in ("-d", "--destination"):
-				self.destination = arg
-			elif opt in ("-N", "--export_in_new_collection"):
-				self.export_in_new_collection = eval(arg)
-			elif opt in ("-n", "--new_collection_name"):
-				self.new_collection_name = arg
-			elif opt in ("-D", "--dependencies_in_dedicated_collection"):
-				self.dependencies_in_dedicated_collection = eval(arg)
-			elif opt in ("-p", "--pack_external_data"):
-				self.pack_external_data = eval(arg)
-			elif opt in ("-S", "--scene_name"):
-				self.scene_name = arg
-			elif opt in ("-O", "--selected_objects"):
-				self.selected_objects = eval(arg)
-			elif opt in ("-P", "--parent_collections"):
-				self.parent_collections = eval(arg)
-			elif opt in ("-C", "--selected_objects_parent_collection"):
-				self.selected_objects_parent_collection = eval(arg)
-			elif opt in ("-r", "--root_collection_name"):
-				self.root_collection_name = arg
-			elif opt in ("-l", "--objects_collection_list"):
-				self.objects_collection_list = eval(arg)
-			elif opt in ("-H", "--all_objects_collection_hierarchy"):
-				self.all_objects_collection_hierarchy = eval(arg)
+		self.parent_collections = self.parent_lookup(scenes[self.source_scene_name].collection)
+
+		self.selected_objects_parent_collection = {}
+		for o in self.source_object_list:
+			self.selected_objects_parent_collection[o] = [c.name for c in objects[o].users_collection]
+		
+		self.root_collection_name = scenes[self.source_scene_name].collection.name
+
+		self.collections_in_scene = [c.name for c in collections.values() if scenes[self.source_scene_name].user_of_id(c)]
+		self.objects_collection_hierarchy = self.get_objects_collection_hierarchy([o for o in objects.values() if o.name in self.source_object_list], self.collections_in_scene)
+
+		self.objects_collection_list = [scenes[self.source_scene_name].collection.name]
+		for c in self.objects_collection_hierarchy.values():
+			for cc in c:
+				if cc not in self.objects_collection_list:
+					self.objects_collection_list.append(cc)
+
+		self.all_objects_collection_hierarchy = {}
+		for o in objects.values():
+			hierarchies = []
+			for c in o.users_collection:
+				coll = []
+				self.get_parent_collection_names(c, coll)
+				hierarchies.append(coll)
+			self.all_objects_collection_hierarchy[o.name] = hierarchies
+
+		# remove objects and collections
+		for l in bpy.data.libraries:
+			if l.name == os.path.basename(self.source_file):
+				bpy.data.libraries.remove(l)
+
+	def parse_argsv(self, argv):
+		parser = argparse.ArgumentParser(description='This command allow you to import objects or scene to a blend file and save it once done.')
+
+		file_group = parser.add_argument_group('File path')
+		file_group.add_argument('-f', '--source_file', nargs='?',
+							help='Path to blend file to export data from',
+							required=True)
+		file_group.add_argument('-d', '--destination_file', nargs='?',
+							help='Path to blend file you want the export data to',
+							required=True)
+
+		import_option_group = parser.add_argument_group('Import Options')
+		import_option_group.add_argument('-s', '--source_data', choices=['OBJECTS', 'SCENE'],
+							default='OBJECTS',
+							help='Defines what data will be exported',
+							required=True)
+		import_option_group.add_argument('-o', '--file_override', choices=['OVERRIDE', 'APPEND_LINK'],
+							default='OVERRIDE',
+							help='Determine if the file will be override or if the data will be appended or linked to destination file',
+							required=True)
+		import_option_group.add_argument('-m', '--export_mode', choices=['APPEND', 'LINK'],
+							default='APPEND',
+							help='Determine if the data is linked or appended from source file',
+							required=True)
+		import_option_group.add_argument('-X', '--export_to_clean_file', default=True,
+							help='If enabled, data is imported in a clean file, otherwise it will be imported in the default startup file',
+							required=True)
+		import_option_group.add_argument('-p', '--pack_external_data', default=False,
+					 		help='If enabled, all external data will be packed into blend file',
+							required=True)
+		import_option_group.add_argument('-S', '--source_scene_name',
+							help='The name of the scene from which export data from',
+							required=True)
+		import_option_group.add_argument('-O', '--source_object_list', nargs='+',
+							help='List of objects to export',
+							required=True)
+
+		collection_hierarchy_group = parser.add_argument_group('Collection Hierarchy')
+		collection_hierarchy_group.add_argument('-c', '--create_collection_hierarchy', default=True,
+							help='If enabled, the collection hierarchy of each objects will be created',
+							required=True)
+		collection_hierarchy_group.add_argument('-N', '--export_in_new_collection', default=False,
+							help='If enabled, all objects and dependencies will be placed in a new collection',
+							required=True)
+		collection_hierarchy_group.add_argument('-n', '--new_collection_name', default='Root Collection',
+							help='The name of the new collection that will be created',
+							required=True)
+		collection_hierarchy_group.add_argument('-D', '--dependencies_in_dedicated_collection', default=False,
+					  		help='If enabled, the dependencies of each objects will be placed in a "Dependencies" collection, otherwise they will be placed in ther respective collection if --create_collection_hierarchy is True or in root collection if False',
+							required=True)
+		
+		debug_group = parser.add_argument_group('Collection Hierarchy')
+		debug_group.add_argument('-P', '--print_debug', default=False,
+										  help='Print debug message in console',
+										  required=False)
+		args = parser.parse_args(argv)
+		self.source_file = args.source_file
+		self.destination_file = args.destination_file
+		self.source_data = args.source_data
+		self.file_override = args.file_override
+		self.export_mode = args.export_mode
+		self.export_to_clean_file = args.export_to_clean_file
+		self.pack_external_data = args.pack_external_data
+		self.source_scene_name = args.source_scene_name
+		self.source_object_list = args.source_object_list
+		self.create_collection_hierarchy = args.create_collection_hierarchy
+		self.export_in_new_collection = args.export_in_new_collection
+		self.new_collection_name = args.new_collection_name
+		self.dependencies_in_dedicated_collection = args.dependencies_in_dedicated_collection
+		self.print_debug = args.print_debug
+		
+		
+		print('source_file = ', self.source_file)
+		print('destination_file = ', self.destination_file)
+		print('source_data = ', self.source_data)
+		print('file_override = ', self.file_override)
+		print('export_mode = ', self.export_mode)
+		print('export_to_clean_file = ', self.export_to_clean_file)
+		print('pack_external_data = ', self.pack_external_data)
+		print('source_scene_name = ', self.source_scene_name)
+		print('source_object_list = ', self.source_object_list)
+		print('create_collection_hierarchy = ', self.create_collection_hierarchy)
+		print('export_in_new_collection = ', self.export_in_new_collection)
+		print('new_collection_name = ', self.new_collection_name)
+		print('dependencies_in_dedicated_collection = ', self.dependencies_in_dedicated_collection)
+		print('print_debug = ', self.print_debug)
+
 
 	def import_command(self):
-		if self.export_to_clean_file and self.override == "OVERRIDE":
+		if self.export_to_clean_file and self.file_override == "OVERRIDE":
 			self.clean_scene()
 
 		self.initial_count = len(bpy.data.objects)
 		self.initial_objects = [o.name for o in bpy.data.objects]
 
-		if self.source == 'CURRENT_SCENE':
+		if self.source_data == 'SCENE':
 			self.import_scene()
-		elif self.source == 'SELECTED_OBJECTS':
+		elif self.source_data == 'OBJECTS':
 			self.import_objects()
 
 		# Pack Files
-		if self.pack_external_data and self.mode == 'APPEND':
+		if self.pack_external_data and self.export_mode == 'APPEND':
 			try:
 				bpy.ops.file.pack_all()
 
@@ -290,22 +338,22 @@ class ImportCommand():
 				self.log.error("Cannot pack data or data does not exist on drive.  " + e)
 
 		# Save File
-		bpy.ops.wm.save_as_mainfile('EXEC_DEFAULT', filepath=self.destination)
+		bpy.ops.wm.save_as_mainfile('EXEC_DEFAULT', filepath=self.destination_file)
 
 	def import_scene(self):
-		self.log.info(f"Importing Scene {self.scene_name}")
+		self.log.info(f"Importing Scene {self.source_scene_name}")
 
-		filepath = os.path.join(self.source_file, 'Scene', self.scene_name)
+		filepath = os.path.join(self.source_file, 'Scene', self.source_scene_name)
 		directory = os.path.join(self.source_file, 'Scene')
 
 		# Import Scene
 		bpy.ops.wm.append(	filepath=filepath,
 							directory=directory,
-						  	filename=self.scene_name,
-							link=self.mode == 'LINK'
+						  	filename=self.source_scene_name,
+							link=self.export_mode == 'LINK'
 					 	 )
 
-		if self.export_to_clean_file and self.override == "OVERRIDE" and self.mode == "APPEND":
+		if self.export_to_clean_file and self.file_override == "OVERRIDE" and self.export_mode == "APPEND":
 			bpy.data.scenes.remove(bpy.data.scenes[bpy.context.scene.name])
 
 	def import_objects(self):
@@ -320,7 +368,7 @@ class ImportCommand():
 		self.cm.set_collection_active(IMPORT_COLLECTION_NAME)
 
 		# Link object from source file
-		self.link_objects(self.source_file, self.selected_objects, bpy.data.collections[IMPORT_COLLECTION_NAME])
+		self.link_objects(self.source_file, self.source_object_list, bpy.data.collections[IMPORT_COLLECTION_NAME])
 
 		self.cm.set_collection_active(self.scene_root_collection.name)
 
@@ -344,7 +392,7 @@ class ImportCommand():
   
 		# Remove Import Collection and make local if needed
 		bpy.data.collections.remove(bpy.data.collections[IMPORT_COLLECTION_NAME])
-		if self.mode == 'APPEND':
+		if self.export_mode == 'APPEND':
 			self.make_imported_objects_local()
 
 	# Main Flow Methods
@@ -357,7 +405,7 @@ class ImportCommand():
 			self.log.info(f'Creating "{self.new_collection_name}" new collection and move imported files to it')
 			self.root_collection = self.cm.create_collection(self.new_collection_name)
 			self.cm.link_collection_to_collection(bpy.data.collections[self.new_collection_name], self.scene_root_collection)
-			if self.mode != 'LINK':
+			if self.export_mode != 'LINK':
 				for o in self.imported_objects.values():
 					self.cm.unlink_object_from_collection(o, self.import_collection)
 					self.cm.link_object_to_collection(o, self.root_collection)
@@ -366,13 +414,13 @@ class ImportCommand():
 		self.log.info("Create Collection Hierarchy")
 		tip_coll = None
 		for c, p in self.parent_collections.items():
-			c = Collection(c, self.debug)
+			c = Collection(c, self.print_debug)
 			if c.incoming_name not in self.objects_collection_list:
 				continue
 			
 			new_coll = None
 			for i, pp in enumerate(p):
-				pp = Collection(pp, self.debug)
+				pp = Collection(pp, self.print_debug)
 				if pp.incoming_name not in self.objects_collection_list:
 					continue
  
@@ -394,22 +442,22 @@ class ImportCommand():
 		
 		# Link Object to collections
 		self.log.info("Link Objects to Collection")
-		for o in self.selected_objects:
+		for o in self.source_object_list:
 			for c in self.selected_objects_parent_collection[o]:
 				if c in self.parent_collections.keys():
-					c = Collection(c, self.debug)
+					c = Collection(c, self.print_debug)
 					self.cm.link_object_to_collection(self.imported_objects[o], c)
 			self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
 	
 	def link_dependencies_in_dedicated_collection(self):
-		if self.mode != "LINK":
+		if self.export_mode != "LINK":
 			self.log.info(f'Link Dependencies in "{DEPENDENCIES_COLLECTION_NAME}" collection')
-			if len(self.selected_objects) < len(bpy.data.objects) - self.initial_count:
+			if len(self.source_object_list) < len(bpy.data.objects) - self.initial_count:
 				dependency_collection = self.cm.create_collection(DEPENDENCIES_COLLECTION_NAME)
 				self.cm.link_collection_to_collection(dependency_collection, self.root_collection)
 
 				for o in self.imported_objects.keys():
-					if o in self.selected_objects:
+					if o in self.source_object_list:
 						continue
 					if o not in self.root_collection.objects:
 						continue
@@ -418,9 +466,9 @@ class ImportCommand():
 	
 	def link_dependencies_in_their_respective_collection(self):
 		self.log.info('Link Dependencies to their respective collection')
-		if len(self.selected_objects) < len(bpy.data.objects) - self.initial_count:
+		if len(self.source_object_list) < len(bpy.data.objects) - self.initial_count:
 			for o in self.imported_objects.keys():
-				if o in self.selected_objects:
+				if o in self.source_object_list:
 					continue
 
 				self.log.info(f'Linking Dependency : {o}')
@@ -468,12 +516,12 @@ class ImportCommand():
 						p.remove(e)
 
 	def link_objects(self, blend_file, object_names, collection):
-		self.log.info(f'Linking objects in target file {blend_file}')
+		self.log.info(f'Linking objects from source file {blend_file}')
 		def library_link_all(data_blocks, libpath, collection):
 			for x in data_blocks:
 				if x.library is not None:
 					if os.path.normpath(libpath) == os.path.normpath(x.library.filepath):
-						self.log.info(f"Importing : {x}")
+						self.log.info(f"Importing : {x.name}")
 						collection.objects.link(x)
 	  
 		# Link objects
@@ -492,6 +540,43 @@ class ImportCommand():
 			
 			o.data.make_local()
 				
+	# Traverse Tree and parent lookup from brockmann: https://blender.stackexchange.com/a/172581
+	def traverse_tree(self, t):
+		yield t
+		for child in t.children:
+			yield from self.traverse_tree(child)
+
+	def parent_lookup(self, coll):
+		parent_lookup = {}
+		for coll in self.traverse_tree(coll):
+			for c in coll.children.keys():
+				if c not in parent_lookup:
+					parent_lookup.setdefault(c, [coll.name])
+				else:
+					parent_lookup[c].append(coll.name)
+		return parent_lookup
+
+	def get_parent_collection_names(self, collection, parent_names):
+		if collection.name not in parent_names:
+			parent_names.append(collection.name)
+		for parent_collection in bpy.data.collections:
+			if collection.name in parent_collection.children.keys():
+				if parent_collection.name not in parent_names:
+					parent_names.append(parent_collection.name)
+				self.get_parent_collection_names(
+					parent_collection, parent_names)
+				return
+
+	def get_objects_collection_hierarchy(self, objs, collections_in_scene):
+		collection_hierarchy = {}
+		for obj in objs:
+			parent_collection = []
+			for coll in obj.users_collection:
+				if coll.name not in collections_in_scene:
+					continue
+				self.get_parent_collection_names(coll, parent_collection)
+				collection_hierarchy.setdefault(obj.name, parent_collection)
+		return collection_hierarchy
 
 def unique_name_clean_func(name):
 	word_pattern = re.compile(r'(\.[0-9]{3})$', re.IGNORECASE)
@@ -504,6 +589,5 @@ def unique_name_clean_func(name):
 		return name
 
 if __name__ == "__main__":
-	print('-- RUNNING IMPORT COMMAND --')
-	IC = ImportCommand(sys.argv, debug=True)
+	IC = ImportCommand(sys.argv)
 	IC.import_command()
