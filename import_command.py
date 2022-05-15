@@ -247,6 +247,7 @@ class ImportCommand():
 		self.log.info(f'parent_collections = {self.parent_collections}')
 		self.log.info(f'selected_objects_parent_collection = {self.selected_objects_parent_collection}')
 		self.log.info(f'root_collection_name = {self.root_collection_name}')
+		self.log.info(f'objects_collection_list = {self.objects_collection_list}')
 		self.log.info(f'objects_collection_hierarchy = {self.objects_collection_hierarchy}')
 		self.log.info(f'all_objects_collection_hierarchy = {self.all_objects_collection_hierarchy}')
 
@@ -418,13 +419,13 @@ class ImportCommand():
 		self.log.info("Create Collection Hierarchy")
 		tip_coll = None
 		for c, p in self.parent_collections.items():
-			c = Collection(c, self.print_debug)
+			c = self.cm.add_collection(c)
 			if c.incoming_name not in self.objects_collection_list:
 				continue
 			
 			new_coll = None
 			for i, pp in enumerate(p):
-				pp = Collection(pp, self.print_debug)
+				pp = self.cm.add_collection(pp)
 				if pp.incoming_name not in self.objects_collection_list:
 					continue
  
@@ -432,8 +433,7 @@ class ImportCommand():
 					tip_coll = self.cm.create_collection(c.name)
 
 				if pp.incoming_name == self.root_collection_name:
-					if self.export_in_new_collection:
-						self.cm.link_collection_to_collection(tip_coll, self.root_collection)
+					self.cm.link_collection_to_collection(tip_coll, self.root_collection)
 				else:
 					if pp.name not in bpy.data.collections:
 						new_coll = self.cm.create_collection(pp.name)
