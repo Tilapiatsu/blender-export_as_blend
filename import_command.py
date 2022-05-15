@@ -37,7 +37,7 @@ class CollectionManager(object):
 
 	def __init__(self, print_message=False):
 		self.log = Logger(addon_name='CollectionManager',
-		                  print=print_message)
+						  print=print_message)
 		self.collection_list = []
 
 		# init collection_name
@@ -171,8 +171,8 @@ class Collection(CollectionManager):
 class ImportCommand():
 	def __init__(self, argv):
 		self.parse_argsv(argv[argv.index("--") + 1:])
-		self.init_source_lists()
 		self.log = Logger(addon_name='Import Command', print=self.print_debug)
+		self.init_source_lists()
 		self._imported_objects = None
 		self._valid_collections = None
 		self.cm = CollectionManager(self.print_debug)
@@ -228,6 +228,27 @@ class ImportCommand():
 		for l in bpy.data.libraries:
 			if l.name == os.path.basename(self.source_file):
 				bpy.data.libraries.remove(l)
+		
+		self.log.info(f'source_file = {self.source_file}')
+		self.log.info(f'destination_file = {self.destination_file}')
+		self.log.info(f'source_data = {self.source_data}')
+		self.log.info(f'file_override = {self.file_override}')
+		self.log.info(f'export_mode = {self.export_mode}')
+		self.log.info(f'export_to_clean_file = {self.export_to_clean_file}')
+		self.log.info(f'pack_external_data = {self.pack_external_data}')
+		self.log.info(f'source_scene_name = {self.source_scene_name}')
+		self.log.info(f'source_object_list = {self.source_object_list}')
+		self.log.info(f'create_collection_hierarchy = {self.create_collection_hierarchy}')
+		self.log.info(f'export_in_new_collection = {self.export_in_new_collection}')
+		self.log.info(f'new_collection_name = {self.new_collection_name}')
+		self.log.info(f'dependencies_in_dedicated_collection = {self.dependencies_in_dedicated_collection}')
+		self.log.info(f'print_debug = {self.print_debug}')
+
+		self.log.info(f'parent_collections = {self.parent_collections}')
+		self.log.info(f'selected_objects_parent_collection = {self.selected_objects_parent_collection}')
+		self.log.info(f'root_collection_name = {self.root_collection_name}')
+		self.log.info(f'objects_collection_hierarchy = {self.objects_collection_hierarchy}')
+		self.log.info(f'all_objects_collection_hierarchy = {self.all_objects_collection_hierarchy}')
 
 	def parse_argsv(self, argv):
 		parser = argparse.ArgumentParser(description='This command allow you to import objects or scene to a blend file and save it once done.')
@@ -290,32 +311,15 @@ class ImportCommand():
 		self.source_data = args.source_data
 		self.file_override = args.file_override
 		self.export_mode = args.export_mode
-		self.export_to_clean_file = args.export_to_clean_file
-		self.pack_external_data = args.pack_external_data
+		self.export_to_clean_file = eval(args.export_to_clean_file)
+		self.pack_external_data = eval(args.pack_external_data)
 		self.source_scene_name = args.source_scene_name
 		self.source_object_list = args.source_object_list
-		self.create_collection_hierarchy = args.create_collection_hierarchy
-		self.export_in_new_collection = args.export_in_new_collection
+		self.create_collection_hierarchy = eval(args.create_collection_hierarchy)
+		self.export_in_new_collection = eval(args.export_in_new_collection)
 		self.new_collection_name = args.new_collection_name
-		self.dependencies_in_dedicated_collection = args.dependencies_in_dedicated_collection
-		self.print_debug = args.print_debug
-		
-		
-		print('source_file = ', self.source_file)
-		print('destination_file = ', self.destination_file)
-		print('source_data = ', self.source_data)
-		print('file_override = ', self.file_override)
-		print('export_mode = ', self.export_mode)
-		print('export_to_clean_file = ', self.export_to_clean_file)
-		print('pack_external_data = ', self.pack_external_data)
-		print('source_scene_name = ', self.source_scene_name)
-		print('source_object_list = ', self.source_object_list)
-		print('create_collection_hierarchy = ', self.create_collection_hierarchy)
-		print('export_in_new_collection = ', self.export_in_new_collection)
-		print('new_collection_name = ', self.new_collection_name)
-		print('dependencies_in_dedicated_collection = ', self.dependencies_in_dedicated_collection)
-		print('print_debug = ', self.print_debug)
-
+		self.dependencies_in_dedicated_collection = eval(args.dependencies_in_dedicated_collection)
+		self.print_debug = eval(args.print_debug)
 
 	def import_command(self):
 		if self.export_to_clean_file and self.file_override == "OVERRIDE":
@@ -498,7 +502,10 @@ class ImportCommand():
 									self.cm.link_collection_to_collection(c, parent_coll)
 						else:
 							parent_coll = self.cm.add_collection(hierarchy[len(hierarchy)-1])
-							self.cm.move_object_to_collection(self.imported_objects[o], self.root_collection, parent_coll)
+							self.cm.link_object_to_collection(self.imported_objects[o], parent_coll)
+
+					self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
+					
 	
 	# Helper Methods
 	def clean_scene(self):
