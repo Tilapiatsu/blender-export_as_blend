@@ -28,6 +28,28 @@ def _label_multiline(context, text, parent):
 	for text_line in text_lines:
 		parent.label(text=text_line)
 
+
+class TILA_OP_ExportAsBlendSaveCurrentFile(bpy.types.Operator):
+	bl_idname = "wm.tila_export_as_blend_save_current_file"
+	bl_label = r"Save Current file ?"
+	bl_options = {'REGISTER', 'INTERNAL'}
+
+	@classmethod
+	def poll (cls, context):
+		return bpy.data.is_dirty
+
+	def execute(self, context):
+		self.report({'INFO'}, "Saving current blend file.")
+		if bpy.data.filepath == '':
+			bpy.ops.wm.save_as_mainfile('INVOKE_DEFAULT')
+		else:
+			bpy.ops.wm.save_as_mainfile('EXEC_DEFAULT', filepath=bpy.data.filepath)
+		return {'FINISHED'}
+
+	def invoke(self, context, event):
+		return context.window_manager.invoke_confirm(self, event)
+
+
 class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 	bl_idname = "export_scene.tila_export_as_blend"
 	bl_label = "Export as Blend"
@@ -109,6 +131,13 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		r.prop(self, 'file_override', expand=True)
 		r = col.row()
 		r.prop(self, 'export_mode', expand=True)
+
+		if bpy.data.is_dirty and self.export_mode == 'LINK':
+			box2 = box.box()
+			text='You are about to link data from an unsaved file which might not work properly. It is recommended to save before exporting.'
+			_label_multiline(context=context, text=text, parent=box2)
+			box2.operator('wm.tila_export_as_blend_save_current_file',
+			              text="Save current file", icon='FILE_BLEND')
   
 		if self.export_mode == "APPEND":
 			box.prop(self, 'pack_external_data')
@@ -163,48 +192,43 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			text = f'''Once exported, {pack_external_data} {open_exported_blend}'''
 			_label_multiline(context=context, text=text, parent=box)
 
-	def __init__(self):
-		self.objects_dict = {}
-		self._selected_objects = None
-		self._parent_collections = None
-		self._objects_collection_hierarchy = None
-		self._selected_objects_parent_collection = None
-		self._all_objects_collection_hierarchy = None
-		self._all_objects = None
-		self._all_collections = None
-
 	def execute(self, context):
 		ext = path.splitext(self.filepath)[1].lower()
 		if ext != '.blend':
 			self.filepath += '.blend'
 
 		# Save to a temp folder if currnt file is dirty. Otherwise some objects will not be visible from the target file.
-		if bpy.data.is_dirty:
+		if bpy.data.is_dirty:		
 			self.tmpdir = tempfile.mkdtemp()
-			self.curent_file = path.join(
+			self.current_file = path.join(
 				self.tmpdir, path.basename(self.filepath))
 			bpy.ops.wm.save_as_mainfile(
-				'EXEC_DEFAULT', filepath=self.curent_file, copy=True)
+				'EXEC_DEFAULT', filepath=self.current_file, copy=True)
 			saved_to_temp_folder = True
 		else:
-			self.curent_file = bpy.data.filepath
+			self.current_file = bpy.data.filepath
 			saved_to_temp_folder = False
 
 		if not path.exists(self.filepath):
 			self.file_override == 'OVERRIDE'
 
-		self.feed_scene_list(context)
+		if os.path.normpath(self.filepath) == os.path.normpath(self.current_file):
+			self.report({'ERROR'}, "Destination file have to be different then source file")
+			return {'CANCELLED'}
 
-		import_parameters = [	'--source_file', self.curent_file,
+
+		self.selected_objects = [o.name for o in bpy.context.selected_objects]
+
+		import_parameters = [	'--source_file', self.current_file,
 								'--destination_file', self.filepath,
-                        		'--source_data', self.source,
-                        		'--file_override', self.file_override,
-                        		'--export_mode', self.export_mode,
-                        		'--export_to_clean_file', str(self.export_to_clean_file),
+								'--source_data', self.source,
+								'--file_override', self.file_override,
+								'--export_mode', self.export_mode,
+								'--export_to_clean_file', str(self.export_to_clean_file),
 								'--pack_external_data', str(self.pack_external_data),
 								'--source_scene_name', context.scene.name,
 								'--source_object_list', *self.selected_objects,
-                        		'--create_collection_hierarchy', str(self.create_collection_hierarchy),
+								'--create_collection_hierarchy', str(self.create_collection_hierarchy),
 								'--export_in_new_collection', str(self.export_in_new_collection),
 								'--new_collection_name', self.new_collection_name,
 								'--dependencies_in_dedicated_collection', str(self.dependencies_in_dedicated_collection),
@@ -246,143 +270,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		if saved_to_temp_folder:
 			delete_folder_if_exist(self.tmpdir)
 
-		self.__init__()
 		return {'FINISHED'}
-
-	def feed_scene_list(self, context):
-		self.selected_objects = [o.name for o in context.selected_objects]
-		parent_collections = self.parent_lookup(context.scene.collection)
-		self.parent_collections = self.get_dict_as_string(parent_collections)
-		self.root_collection_name = context.scene.collection.name
-		self.collections_in_scene = [c.name for c in bpy.data.collections if bpy.context.scene.user_of_id(c)]
-		self.objects_collection_hierarchy = self.get_objects_collection_hierarchy(context.selected_objects)
-  
-		self.objects_collection_list = [bpy.context.scene.collection.name]
-		for c in self.objects_collection_hierarchy.values():
-			for cc in c:
-				if cc not in self.objects_collection_list:
-					self.objects_collection_list.append(cc)
-
-		self.objects_collection_list = self.get_list_as_string(self.objects_collection_list)
-  
-		self.selected_objects_parent_collection = {}
-		for o in context.selected_objects:
-			self.selected_objects_parent_collection[o.name] = [c.name for c in o.users_collection]
-
-		self.selected_objects_parent_collections = self.get_dict_as_string(self.selected_objects_parent_collection)
-
-		self.all_objects_collection_hierarchy = {}
-		for o in bpy.data.objects:
-			hierarchies = []
-			for c in o.users_collection:
-				coll = []
-				self.get_parent_collection_names(c, coll)
-				hierarchies.append(coll)
-			self.all_objects_collection_hierarchy[o.name] = hierarchies
-
-		self.all_objects_collection_hierarchy = self.get_dict_as_string(self.all_objects_collection_hierarchy)
-
-	def get_object_list_name(self, object_list):
-		string_names = '['
-		for i, o in enumerate(object_list):
-			string_names += f'"{o.name}"'
-			if i < len(object_list)-1:
-				string_names += ', '
-
-		string_names += ']'
-		return string_names
-
-	def get_list_as_string(self, l):
-		string_names = '['
-		for i, o in enumerate(l):
-			if isinstance(o, list):
-				string_names += self.get_list_as_string(o)
-				if i < len(l)-1:
-					string_names += ', '
-			elif isinstance(o, str):
-				string_names += f'"{o}"'
-				if i < len(l)-1:
-					string_names += ', '
-
-		string_names += ']'
-		return string_names
-
-	def get_dict_as_string(self, d):
-		string_dict = '{'
-		i = 0
-		parent = ''
-		for o, p in d.items():
-			string_dict += f'"{o}":{self.get_list_as_string(p)}'
-			if i < len(d.keys())-1:
-				string_dict += ', '
-
-			i += 1
-		string_dict += '}'
-		return string_dict
-
-	def get_all_objects_collection_hierarchy_as_string(self):
-		string_dict = '{'
-		i = 0
-		for o, p in self.all_objects_collection_hierarchy.items():
-			parent = '['
-			for j, pp in enumerate(p):
-				parent += self.get_list_as_string(pp)
-				# parent += f'"{pp}"'
-				if j < len(p) - 1:
-					parent += ','
-			parent += ']'
-
-			string_dict += f'"{o}":{parent}'
-			if i < len(self.all_objects_collection_hierarchy.keys())-1:
-				string_dict += f', '
-
-			i += 1
-		string_dict += '}'
-		return string_dict
-
-	def link_blend_file(self, file_path, datablock_dir, data_name):
-		filepath = path.join(file_path, datablock_dir, data_name)
-		directory = path.join(file_path, datablock_dir)
-		bpy.ops.wm.link(filepath=filepath, directory=directory,
-						filename=data_name, link=True)
-
-	# Traverse Tree and parent lookup from brockmann: https://blender.stackexchange.com/a/172581
-	def traverse_tree(self, t):
-		yield t
-		for child in t.children:
-			yield from self.traverse_tree(child)
-
-	def parent_lookup(self, coll):
-		parent_lookup = {}
-		for coll in self.traverse_tree(coll):
-			for c in coll.children.keys():
-				if c not in parent_lookup:
-					parent_lookup.setdefault(c, [coll.name])
-				else:
-					parent_lookup[c].append(coll.name)
-		return parent_lookup
-
-	def get_parent_collection_names(self, collection, parent_names):
-		if collection.name not in parent_names:
-			parent_names.append(collection.name)
-		for parent_collection in bpy.data.collections:
-			if collection.name in parent_collection.children.keys():
-				if parent_collection.name not in parent_names:
-					parent_names.append(parent_collection.name)
-				self.get_parent_collection_names(
-					parent_collection, parent_names)
-				return
-
-	def get_objects_collection_hierarchy(self, objs):
-		collection_hierarchy = {}
-		for obj in objs:
-			parent_collection = []
-			for coll in obj.users_collection:
-				if coll.name not in self.collections_in_scene:
-					continue
-				self.get_parent_collection_names(coll, parent_collection)
-				collection_hierarchy.setdefault(obj.name, parent_collection)
-		return collection_hierarchy
 
 
 def delete_folder_if_exist(p):
@@ -406,7 +294,7 @@ def menu_func_export(self, context):
 						 text="Export as Blend (.blend)")
 
 
-classes = (TILA_OP_ExportAsBlend,)
+classes = (TILA_OP_ExportAsBlend, TILA_OP_ExportAsBlendSaveCurrentFile)
 
 
 def register():
@@ -419,7 +307,7 @@ def register():
 def unregister():
 	for cls in reversed(classes):
 		bpy.utils.unregister_class(cls)
-
+	
 	bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
 
 
