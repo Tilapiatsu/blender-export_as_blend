@@ -21,6 +21,10 @@ bl_info = {
 	"category": "Import-Export"
 }
 
+# TODO : 
+#	- Need to support Scene selection in Target File when Appending
+# 	- Need to support object children export
+
 def _label_multiline(context, text, parent):
 	chars = int(context.region.width / 7)   # 7 pix on 1 character
 	wrapper = textwrap.TextWrapper(width=chars)
@@ -87,6 +91,9 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 	export_to_clean_file: bpy.props.BoolProperty(	name='Export To Clean File',
 												  description='If enable the startup file will be skipped and the data will be exported in a clean empty file',
 												  default=True)
+	# export_object_children: bpy.props.BoolProperty(name='Export objects children',
+	# 															description='Export selected objects children',
+	# 															default=False)
 	export_in_new_collection: bpy.props.BoolProperty(name='Export objects in new collection',
 																description='Each objects, dependencies and collection hierarchy will be placed in a new collection',
 																default=False)
@@ -119,9 +126,9 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		row = box.row()
 		col = row.column()
 		col.alignment = 'RIGHT'
-		col.label(text='source')
-		col.label(text='fiel override')
-		col.label(text='export mode')
+		col.label(text='Source')
+		col.label(text='File override')
+		col.label(text='Export mode')
 
 		col = row.column()
 		col.alignment = 'EXPAND'
@@ -137,7 +144,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			text='You are about to link data from an unsaved file which might not work properly. It is recommended to save before exporting.'
 			_label_multiline(context=context, text=text, parent=box2)
 			box2.operator('wm.tila_export_as_blend_save_current_file',
-			              text="Save current file", icon='FILE_BLEND')
+						  text="Save current file", icon='FILE_BLEND')
   
 		if self.export_mode == "APPEND":
 			box.prop(self, 'pack_external_data')
@@ -146,6 +153,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			box.prop(self, 'export_to_clean_file')
 
 		if self.source == "OBJECTS":
+			# box.prop(self, 'export_object_children')
 			box.prop(self, 'create_collection_hierarchy')
 			box.prop(self, 'dependencies_in_dedicated_collection')
 			col = box.row()
@@ -172,20 +180,20 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 
 		if self.source == 'OBJECTS':
 			create_collection_hierarchy = ' The collection hierarchy of selected objects will be preserved.' if self.create_collection_hierarchy else f' Selected objects will be exported without its collection hierarchy.'
-			dependencies_in_dedicated_collection = ' All objects will be placed under a "Dependencies" collection.' if self.dependencies_in_dedicated_collection else ' Each object dependencies will be exported into its dedicated collection.'
+			dependencies_in_dedicated_collection = ' All objects dependencies will be placed under a "Dependencies" collection.' if self.dependencies_in_dedicated_collection else ' Each object dependencies will be exported the same collection hierarchy than the current file.'
 			export_in_new_collection = f' All Objects and Dependencies will be exported in a root collection called "{self.new_collection_name}".' if self.export_in_new_collection else ''
 		else:
 			create_collection_hierarchy = ''
 			dependencies_in_dedicated_collection = ''
 			export_in_new_collection = ''
 
-		pack_external_data = 'all external data will be packed into blend file' if self.pack_external_data else ''
-		open_exported_blend = 'the exported file will be opened.' if self.open_exported_blend else ''
+		pack_external_data = 'all external data will be packed into blend file' if self.pack_external_data and self.export_mode != 'LINK' else ''
+		open_exported_blend = 'the blend file will be opened.' if self.open_exported_blend else ''
 
 		if len(pack_external_data) and len(open_exported_blend):
 			open_exported_blend = 'and ' + open_exported_blend
 
-		text = f'''{source} will be {export_mode} from current file, {file_override} selected file.{export_to_clean_file}{create_collection_hierarchy}{dependencies_in_dedicated_collection}{export_in_new_collection}'''
+		text = f'''{source} will be {export_mode} from current file, {file_override} destination file.{export_to_clean_file}{create_collection_hierarchy}{dependencies_in_dedicated_collection}{export_in_new_collection}'''
 		_label_multiline(context=context, text=text, parent=box)
 
 		if len(pack_external_data) or len(open_exported_blend):
@@ -228,6 +236,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 								'--pack_external_data', str(self.pack_external_data),
 								'--source_scene_name', context.scene.name,
 								'--source_object_list', *self.selected_objects,
+                       	 		# '--export_object_children', str(self.export_object_children),
 								'--create_collection_hierarchy', str(self.create_collection_hierarchy),
 								'--export_in_new_collection', str(self.export_in_new_collection),
 								'--new_collection_name', self.new_collection_name,

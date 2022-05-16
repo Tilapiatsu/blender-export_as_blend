@@ -195,8 +195,20 @@ class ImportCommand():
 			if os.path.exists(self.source_file) :
 				self._imported_objects = {o.name:o for o in bpy.data.objects if o.library != None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
 		return self._imported_objects
+
+	@property
+	def have_dependencies(self):
+		self.log.debug(f'source_list_count = {len(self.source_object_list)}')
+		self.log.debug(f'total_objects = {len(bpy.context.scene.objects)}')
+		self.log.debug(f'initial_count = {self.initial_count}')
+		return len(self.source_object_list) < len(bpy.context.scene.objects) - self.initial_count
 	
 	def init_source_lists(self):
+		# register previously loaded libraries
+		self.previous_library_objects = {o.name: o for o in bpy.data.objects if o.library is not None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
+		self.previous_library_collections = {c.name: c for c in bpy.data.collections if c.library is not None and os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file)}
+		self.previous_library_scenes = {s.name: s for s in bpy.data.scenes if s.library is not None and os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file)}
+
 		with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
 			for s in data_from.scenes:
 				data_to.scenes.append(s)
@@ -204,7 +216,8 @@ class ImportCommand():
 				data_to.collections.append(c)
 			for o in data_from.objects:
 				data_to.objects.append(o)
-			
+		
+		# register imported libraries data
 		objects = {o.name:o for o in bpy.data.objects if o.library is not None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
 		collections = {c.name:c for c in bpy.data.collections if c.library is not None and os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file)}
 		scenes = {s.name:s for s in bpy.data.scenes if s.library is not None and os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file)}
@@ -235,6 +248,8 @@ class ImportCommand():
 				self.get_parent_collection_names(c, coll, collections.values())
 				hierarchies.append(coll)
 			self.all_objects_collection_hierarchy[o.name] = hierarchies
+
+		# self.objects_children = {objects[o].name: self.get_object_children(objects[o]) for o in self.source_object_list}
 
 		# remove objects and collections
 		self.remove_source_library()
@@ -292,6 +307,9 @@ class ImportCommand():
 		import_option_group.add_argument('-p', '--pack_external_data', default=False,
 					 		help='If enabled, all external data will be packed into blend file',
 							required=True)
+		# import_option_group.add_argument('-C', '--export_object_children', default=False,
+		#                     help='if enabled, all listed object children will be exported',
+		#                     required=True)
 		import_option_group.add_argument('-S', '--source_scene_name',
 							help='The name of the scene from which export data from',
 							required=True)
@@ -325,6 +343,7 @@ class ImportCommand():
 		self.export_mode = args.export_mode
 		self.export_to_clean_file = eval(args.export_to_clean_file)
 		self.pack_external_data = eval(args.pack_external_data)
+		# self.export_object_children = eval(args.export_object_children)
 		self.source_scene_name = args.source_scene_name
 		self.source_object_list = args.source_object_list
 		self.create_collection_hierarchy = eval(args.create_collection_hierarchy)
@@ -335,10 +354,9 @@ class ImportCommand():
 
 	def import_command(self):
 		if self.export_to_clean_file and self.file_override == "OVERRIDE":
-			self.clean_scene()
+			self.clean_file()
 
-		self.initial_count = len(bpy.data.objects)
-		self.initial_objects = [o.name for o in bpy.data.objects]
+		self.initial_count = len(bpy.context.scene.objects)
 
 		if self.source_data == 'SCENE':
 			self.import_scene()
@@ -423,10 +441,9 @@ class ImportCommand():
 			self.log.info(f'Creating "{self.new_collection_name}" new collection and move imported files to it')
 			self.root_collection = self.cm.create_collection(self.new_collection_name)
 			self.cm.link_collection_to_collection(bpy.data.collections[self.new_collection_name], self.scene_root_collection)
-			if self.export_mode != 'LINK':
-				for o in self.imported_objects.values():
-					self.cm.unlink_object_from_collection(o, self.import_collection)
-					self.cm.link_object_to_collection(o, self.root_collection)
+			for o in self.imported_objects.values():
+				self.cm.unlink_object_from_collection(o, self.import_collection)
+				self.cm.link_object_to_collection(o, self.root_collection)
 
 	def create_and_link_collection_hierarchy(self):
 		self.log.info("Create Collection Hierarchy")
@@ -476,28 +493,30 @@ class ImportCommand():
 			self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
 	
 	def link_dependencies_in_dedicated_collection(self):
-		if self.export_mode != "LINK":
-			if len(self.source_object_list) < len(bpy.data.objects) - self.initial_count:
-				self.log.info(f'Link Dependencies in "{DEPENDENCIES_COLLECTION_NAME}" collection')
-				dependency_collection = self.cm.create_collection(DEPENDENCIES_COLLECTION_NAME)
-				self.cm.link_collection_to_collection(dependency_collection, self.root_collection)
+		self.log.debug(self.have_dependencies)
+		if self.have_dependencies:
+			dependency_collection = self.cm.add_collection(DEPENDENCIES_COLLECTION_NAME)
+			self.log.info(f'Link Dependencies in "{dependency_collection.name}" collection')
+			dependency_collection = self.cm.create_collection(dependency_collection.name)
+			self.cm.link_collection_to_collection(dependency_collection, self.root_collection)
 
-				for o in self.imported_objects.keys():
-					if o in self.source_object_list:
-						continue
-					if o not in self.root_collection.objects:
-						continue
+			for o in self.imported_objects.keys():
+				if o in self.source_object_list:
+					continue
+				if o not in self.root_collection.objects:
+					continue
 
-					self.cm.move_object_to_collection(self.imported_objects[o], self.root_collection, dependency_collection)
+				self.cm.move_object_to_collection(self.imported_objects[o], self.root_collection, dependency_collection)
 	
 	def link_dependencies_in_their_respective_collection(self):
-		if len(self.source_object_list) < len(bpy.data.objects) - self.initial_count:
+		self.log.debug(self.have_dependencies)
+		if self.have_dependencies:
 			self.log.info('Link Dependencies to their respective collection')
 			for o in self.imported_objects.keys():
 				if o in self.source_object_list:
 					continue
 
-				self.log.info(f'Linking Dependency : {o}')
+				self.log.info(f'Linking Dependency object "{o}"')
 	
 				for obj, h in self.all_objects_collection_hierarchy.items():
 					if obj != o:
@@ -530,8 +549,8 @@ class ImportCommand():
 					
 	
 	# Helper Methods
-	def clean_scene(self):
-		self.log.info("Cleaning Scene")
+	def clean_file(self):
+		self.log.info("Cleaning File")
 		for d in dir(bpy.data):
 			if d in ['screens', 'workspaces']:
 				continue
@@ -608,12 +627,33 @@ class ImportCommand():
 				self.get_parent_collection_names(coll, parent_collection, collection_data)
 				collection_hierarchy.setdefault(obj.name, parent_collection)
 		return collection_hierarchy
+	
+	def get_object_children(self, obj):
+		children = [] 
+		for ob in bpy.data.objects: 
+			if ob.parent == obj: 
+				children.append(ob) 
+		return children 
 
 	def remove_source_library(self):
-		for l in bpy.data.libraries:
-			if l.name == os.path.basename(self.source_file):
-				self.log.info(f'Remove library : {self.source_file}')
-				bpy.data.libraries.remove(l)
+		if len(self.previous_library_objects) or len(self.previous_library_collections) or len(self.previous_library_scenes):
+			objects = [o for o in bpy.data.objects if o.library is not None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file) and o not in self.previous_library_objects.values()]
+			collections = [c for c in bpy.data.collections if c.library is not None and os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file) and c not in self.previous_library_collections.values()]
+			scenes = [s for s in bpy.data.scenes if s.library is not None and os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file) and s not in self.previous_library_scenes.values()]
+
+			for o in objects :
+				bpy.data.objects.remove(o)
+
+			for c in collections:
+				bpy.data.collections.remove(c)
+
+			for s in scenes:
+				bpy.data.scenes.remove(s)
+		else:
+			for l in bpy.data.libraries:
+				if l.name == os.path.basename(self.source_file):
+					self.log.info(f'Remove library : {self.source_file}')
+					bpy.data.libraries.remove(l)
 
 
 def unique_name_clean_func(name):
