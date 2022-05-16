@@ -19,8 +19,9 @@ This addon works with objects or scene only at the moment.
 
 | Setting | Description |
 |-----------:|-----------|
-|**source**| let you choose what to export : `Selected Objects` only export current object selection, `Current Scene` will export the entire current scene.|
-|**mode**|`Append` will append data to the exported blend file , and `Link` will Link data to the exported blend file.|
+|**Source**| Let you choose what to export : `Selected Objects` only export current object selection, `Current Scene` will export the entire current scene.|
+|**File override**|`Override` will override the selected file if exists, create new if not, `Append/Link` will use `Export mode` parameter to Link or Append data to destination file|
+|**Export mode**|`Append` will append data to the exported blend file , and `Link` will Link data to the exported blend file.|
 |**Pack External Data**| Any external data will be written into Blend file ( Textures etc...). It will drastically increase saving time and file size, but make the file easier to transfer.|
 |**Export to Clean File**|If enable, the data will be exported to a clean file without any data except from your source objects. Otherwise the data will be exported in a scene with your Startup file as a starting point that can contain many data depending on your configuration.|
 |**Create Collection Hierarchy**| The collection hierarchy of the selected objects will be recreated in the exported file. If disable, all objects will be exported in the root collection.|
@@ -28,6 +29,7 @@ This addon works with objects or scene only at the moment.
 |**New Collection name**|Name of the collection |
 |**Export dependencies in dedicated collection**| If enable any object dependencies will be exported in a collection named "Dependencies". Otherwise, the collection hierarchy will be recreated for each dependencies. ( An object dependency is any data neeeded for the selected objects to be evaluated correctly. For exemple, an object that is used in the modifier or a driver used in by the exported object. ) |
 |**Open Exported Blend**| After export, the file is exported.|
+|**Print debug**| Will print to console all message the operator will do behind the scene to help you understand what's happening|
 
 
 ### Feedback
