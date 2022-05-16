@@ -120,8 +120,8 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		col = row.column()
 		col.alignment = 'RIGHT'
 		col.label(text='source')
-		col.label(text='override')
-		col.label(text='mode')
+		col.label(text='fiel override')
+		col.label(text='export mode')
 
 		col = row.column()
 		col.alignment = 'EXPAND'

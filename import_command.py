@@ -72,7 +72,13 @@ class CollectionManager(object):
 		elif isinstance(collection, bpy_types.Collection):
 			return Collection(collection.name)
 		else:
-			raise ValueError
+			try:
+				ex = ValueError()
+				ex.strerror = f"Unrecognise type for Collection {type(collection)}"
+				raise ex
+			except ValueError as e:
+				print(f'Value Error : {e.strerror}')
+
 	
 	# Linking and Unlinking Methods
 	def create_collection(self, collection_name):
@@ -158,7 +164,12 @@ class Collection(CollectionManager):
 			return bpy.context.scene.collection
 		elif self.name not in bpy.data.collections:
 			self.log.error(f'"{self.name}" collection not in current scene')
-			raise ValueError
+			try:
+				ex = ValueError()
+				ex.strerror = f'Name "{self.name}" not in Collections'
+				raise ex
+			except ValueError as e:
+				print(f'Value Error : {e.strerror}')
 		else:
 			return bpy.data.collections[self.name]
 
@@ -207,7 +218,8 @@ class ImportCommand():
 		self.root_collection_name = scenes[self.source_scene_name].collection.name
 
 		self.collections_in_scene = [c.name for c in collections.values() if scenes[self.source_scene_name].user_of_id(c)]
-		self.objects_collection_hierarchy = self.get_objects_collection_hierarchy([o for o in objects.values() if o.name in self.source_object_list], self.collections_in_scene)
+		self.objects_collection_hierarchy = self.get_objects_collection_hierarchy(
+			[o for o in objects.values() if o.name in self.source_object_list], self.collections_in_scene, collections.values())
 
 		self.objects_collection_list = [scenes[self.source_scene_name].collection.name]
 		for c in self.objects_collection_hierarchy.values():
@@ -220,14 +232,12 @@ class ImportCommand():
 			hierarchies = []
 			for c in o.users_collection:
 				coll = []
-				self.get_parent_collection_names(c, coll)
+				self.get_parent_collection_names(c, coll, collections.values())
 				hierarchies.append(coll)
 			self.all_objects_collection_hierarchy[o.name] = hierarchies
 
 		# remove objects and collections
-		for l in bpy.data.libraries:
-			if l.name == os.path.basename(self.source_file):
-				bpy.data.libraries.remove(l)
+		self.remove_source_library()
 		
 		self.log.info(f'source_file = {self.source_file}')
 		self.log.info(f'destination_file = {self.destination_file}')
@@ -244,6 +254,7 @@ class ImportCommand():
 		self.log.info(f'dependencies_in_dedicated_collection = {self.dependencies_in_dedicated_collection}')
 		self.log.info(f'print_debug = {self.print_debug}')
 
+		self.log.info(f'collections_in_scene = {self.collections_in_scene}')
 		self.log.info(f'parent_collections = {self.parent_collections}')
 		self.log.info(f'selected_objects_parent_collection = {self.selected_objects_parent_collection}')
 		self.log.info(f'root_collection_name = {self.root_collection_name}')
@@ -382,6 +393,7 @@ class ImportCommand():
 			self.create_and_link_to_new_collection()
 		# Move imported Objects to root collection
 		else:
+			self.log.info('Move Objects to Scene Root Collection')
 			for o in self.imported_objects.values():
 				self.cm.move_object_to_collection(o, self.import_collection, bpy.context.scene.collection)
 			self.root_collection = self.scene_root_collection
@@ -399,6 +411,7 @@ class ImportCommand():
 		bpy.data.collections.remove(bpy.data.collections[IMPORT_COLLECTION_NAME])
 		if self.export_mode == 'APPEND':
 			self.make_imported_objects_local()
+			self.remove_source_library()
 
 	# Main Flow Methods
 	def create_and_link_to_new_collection(self):
@@ -428,7 +441,7 @@ class ImportCommand():
 				pp = self.cm.add_collection(pp)
 				if pp.incoming_name not in self.objects_collection_list:
 					continue
- 
+				
 				if i == 0:
 					tip_coll = self.cm.create_collection(c.name)
 
@@ -449,14 +462,23 @@ class ImportCommand():
 		for o in self.source_object_list:
 			for c in self.selected_objects_parent_collection[o]:
 				if c in self.parent_collections.keys():
-					c = Collection(c, self.print_debug)
+					c = self.cm.add_collection(c)
+					if c.name not in bpy.data.collections:
+						self.cm.create_collection(c.name)
+						parents = self.parent_collections[c.incoming_name]
+						for p in parents:
+							# Need to relink Properly the renamed parent
+							parent = self.cm.add_collection(p)
+							if parent.name not in bpy.data.collections:
+								self.cm.create_collection(parent.name)
+							self.cm.link_collection_to_collection(c, parent)
 					self.cm.link_object_to_collection(self.imported_objects[o], c)
 			self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
 	
 	def link_dependencies_in_dedicated_collection(self):
 		if self.export_mode != "LINK":
-			self.log.info(f'Link Dependencies in "{DEPENDENCIES_COLLECTION_NAME}" collection')
 			if len(self.source_object_list) < len(bpy.data.objects) - self.initial_count:
+				self.log.info(f'Link Dependencies in "{DEPENDENCIES_COLLECTION_NAME}" collection')
 				dependency_collection = self.cm.create_collection(DEPENDENCIES_COLLECTION_NAME)
 				self.cm.link_collection_to_collection(dependency_collection, self.root_collection)
 
@@ -469,8 +491,8 @@ class ImportCommand():
 					self.cm.move_object_to_collection(self.imported_objects[o], self.root_collection, dependency_collection)
 	
 	def link_dependencies_in_their_respective_collection(self):
-		self.log.info('Link Dependencies to their respective collection')
 		if len(self.source_object_list) < len(bpy.data.objects) - self.initial_count:
+			self.log.info('Link Dependencies to their respective collection')
 			for o in self.imported_objects.keys():
 				if o in self.source_object_list:
 					continue
@@ -540,7 +562,9 @@ class ImportCommand():
 		library_link_all(bpy.data.objects, blend_file, collection)
   
 	def make_imported_objects_local(self):
+		self.log.info(f'Make all imported objects local')
 		for o in self.imported_objects.values():
+			self.log.info(f'Make local : {o.name}')
 			o.make_local()
 			if o.data is None:
 				continue
@@ -563,27 +587,34 @@ class ImportCommand():
 					parent_lookup[c].append(coll.name)
 		return parent_lookup
 
-	def get_parent_collection_names(self, collection, parent_names):
+	def get_parent_collection_names(self, collection, parent_names, collection_data):
 		if collection.name not in parent_names:
 			parent_names.append(collection.name)
-		for parent_collection in bpy.data.collections:
+		for parent_collection in collection_data:
 			if collection.name in parent_collection.children.keys():
 				if parent_collection.name not in parent_names:
 					parent_names.append(parent_collection.name)
 				self.get_parent_collection_names(
-					parent_collection, parent_names)
+					parent_collection, parent_names, collection_data)
 				return
 
-	def get_objects_collection_hierarchy(self, objs, collections_in_scene):
+	def get_objects_collection_hierarchy(self, objs, collections_in_scene, collection_data):
 		collection_hierarchy = {}
 		for obj in objs:
 			parent_collection = []
 			for coll in obj.users_collection:
 				if coll.name not in collections_in_scene:
 					continue
-				self.get_parent_collection_names(coll, parent_collection)
+				self.get_parent_collection_names(coll, parent_collection, collection_data)
 				collection_hierarchy.setdefault(obj.name, parent_collection)
 		return collection_hierarchy
+
+	def remove_source_library(self):
+		for l in bpy.data.libraries:
+			if l.name == os.path.basename(self.source_file):
+				self.log.info(f'Remove library : {self.source_file}')
+				bpy.data.libraries.remove(l)
+
 
 def unique_name_clean_func(name):
 	word_pattern = re.compile(r'(\.[0-9]{3})$', re.IGNORECASE)
