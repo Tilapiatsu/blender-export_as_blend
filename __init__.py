@@ -91,9 +91,9 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 	export_to_clean_file: bpy.props.BoolProperty(	name='Export To Clean File',
 												  description='If enable the startup file will be skipped and the data will be exported in a clean empty file',
 												  default=True)
-	# export_object_children: bpy.props.BoolProperty(name='Export objects children',
-	# 															description='Export selected objects children',
-	# 															default=False)
+	export_object_children: bpy.props.BoolProperty(name='Export objects children',
+																description='Export selected objects children',
+																default=False)
 	export_in_new_collection: bpy.props.BoolProperty(name='Export objects in new collection',
 																description='Each objects, dependencies and collection hierarchy will be placed in a new collection',
 																default=False)
@@ -153,7 +153,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			box.prop(self, 'export_to_clean_file')
 
 		if self.source == "OBJECTS":
-			# box.prop(self, 'export_object_children')
+			box.prop(self, 'export_object_children')
 			box.prop(self, 'create_collection_hierarchy')
 			box.prop(self, 'dependencies_in_dedicated_collection')
 			col = box.row()
@@ -236,7 +236,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 								'--pack_external_data', str(self.pack_external_data),
 								'--source_scene_name', context.scene.name,
 								'--source_object_list', *self.selected_objects,
-                       	 		# '--export_object_children', str(self.export_object_children),
+                       	 		'--export_object_children', str(self.export_object_children),
 								'--create_collection_hierarchy', str(self.create_collection_hierarchy),
 								'--export_in_new_collection', str(self.export_in_new_collection),
 								'--new_collection_name', self.new_collection_name,
