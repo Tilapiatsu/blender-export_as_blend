@@ -218,9 +218,18 @@ class ImportCommand():
 		collections = {c.name:c for c in bpy.data.collections if c.library is not None and os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file)}
 		scenes = {s.name:s for s in bpy.data.scenes if s.library is not None and os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file)}
 		
-		self.objects_children = {o: self.get_object_children(objects[o]) for o in self.source_object_list}
-
-		self.log.debug(f'objects_childer = {self.objects_children}')
+		# self.objects_children = {o: self.get_object_children(objects[o]) for o in self.source_object_list}
+		self.objects_children = {}
+		object_to_process = self.source_object_list.copy()
+		while len(object_to_process):
+			o = object_to_process.pop()
+			self.log.debug(f'Processing Children of "{o}", {object_to_process}')
+			self.objects_children[o] = self.get_object_children(objects[o])
+			if len(self.objects_children[o]):
+				self.log.debug(f'New Children found {self.objects_children[o]}')
+				for c in self.objects_children[o]:
+					object_to_process.append(c)
+					self.source_object_list.append(c)
 
 		if self.export_object_children:
 			for c in self.objects_children.values():
@@ -228,19 +237,25 @@ class ImportCommand():
 					if cc not in objects.keys():
 						o = bpy.data.objects[cc]
 						if o.library is not None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file):
-							objects[cc] = bpy.data.objects[cc]
+							objects[cc] = o
+					# if cc not in self.source_object_list:
+					# 	self.source_object_list.append(cc)
+		self.log.debug(f'objects = {objects}')
 
 		self.parent_collections = self.parent_lookup(scenes[self.source_scene_name].collection)
 
 		self.selected_objects_parent_collection = {}
 		for o in self.source_object_list:
 			self.selected_objects_parent_collection[o] = [c.name for c in objects[o].users_collection]
+			if o not in self.objects_children.keys():
+				continue
+			for c in self.objects_children[o]:
+				self.selected_objects_parent_collection[c] = [cc.name for cc in objects[c].users_collection]
 		
 		self.root_collection_name = scenes[self.source_scene_name].collection.name
 
 		self.collections_in_scene = [c.name for c in collections.values() if scenes[self.source_scene_name].user_of_id(c)]
-		self.objects_collection_hierarchy = self.get_objects_collection_hierarchy(
-			[o for o in objects.values() if o.name in self.source_object_list], self.collections_in_scene, collections.values())
+		self.objects_collection_hierarchy = self.get_objects_collection_hierarchy([o for o in objects.values() if o.name in self.source_object_list], self.collections_in_scene, collections.values())
 
 		self.objects_collection_list = [scenes[self.source_scene_name].collection.name]
 		for c in self.objects_collection_hierarchy.values():
@@ -286,6 +301,7 @@ class ImportCommand():
 		self.log.info(f'objects_collection_list = {self.objects_collection_list}')
 		self.log.info(f'objects_collection_hierarchy = {self.objects_collection_hierarchy}')
 		self.log.info(f'all_objects_collection_hierarchy = {self.all_objects_collection_hierarchy}')
+		self.log.info(f'objects_childen = {self.objects_children}')
 
 	def parse_argsv(self, argv):
 		parser = argparse.ArgumentParser(description='This command allow you to import objects or scene to a blend file and save it once done.')
@@ -318,8 +334,8 @@ class ImportCommand():
 					 		help='If enabled, all external data will be packed into blend file',
 							required=True)
 		import_option_group.add_argument('-C', '--export_object_children', default=False,
-		                    help='if enabled, all listed object children will be exported',
-		                    required=True)
+							help='if enabled, all listed object children will be exported',
+							required=True)
 		import_option_group.add_argument('-S', '--source_scene_name',
 							help='The name of the scene from which export data from',
 							required=True)
@@ -415,9 +431,11 @@ class ImportCommand():
 		self.link_objects(self.source_file, self.source_object_list, bpy.data.collections[IMPORT_COLLECTION_NAME])
 
 		self.cm.set_collection_active(self.scene_root_collection.name)
-
-		if not self.export_object_children:
-			self.remove_object_chilren()
+		
+		if self.export_object_children:
+			self.parent_children_hierarchy()
+		else:
+			self.remove_objects_chilren()
 
 		# Create New Collection and Link all imported object in it
 		if self.export_in_new_collection:
@@ -558,20 +576,15 @@ class ImportCommand():
 
 					self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
 	
-	def remove_object_chilren(self):
-		self.log.debug(f'objects_children = {self.objects_children}')
+	def remove_objects_chilren(self):
 		for o in self.imported_objects:
-			self.log.debug(f'Imported objects candidate = {o}')
 			if o not in self.objects_children.keys():
 				continue
-
-			self.log.debug(f'Imported objects passed = {o}')
 
 			children =  self.objects_children[o]
 
 			if len(children):
 				for c in children:
-					self.log.debug(f'child = {c}')
 					if c not in self.source_object_list:
 						if c in bpy.data.objects:
 							self.log.info(f'Remove object children : "{c}"')
@@ -678,12 +691,13 @@ class ImportCommand():
 				collection_hierarchy.setdefault(obj.name, parent_collection)
 		return collection_hierarchy
 	
-	def get_object_children(self, obj, children = []):
+	def get_object_children(self, obj):
+		children = []
 		parents = [o for o in bpy.data.objects]
 		for ob in parents: 
 			if ob.parent == obj: 
 				children.append(ob.name)
-				self.get_object_children(ob, children)
+				# self.get_object_children(ob, children)
 		return children 
 
 	def remove_source_library(self):
@@ -706,7 +720,21 @@ class ImportCommand():
 					self.log.info(f'Remove library : {self.source_file}')
 					bpy.data.libraries.remove(l)
 
-	
+	def parent_children_hierarchy(self):
+		def parent_keep_transform(parent, child):
+			child.parent = parent
+			child.matrix_parent_inverse = parent.matrix_world.inverted()
+
+		for o, c in self.objects_children.items():
+			hierarchy = [o] + c
+			for i,h in enumerate(hierarchy):
+				if i == 0:
+					continue
+				p = bpy.data.objects[hierarchy[i-1]]
+				cc = bpy.data.objects[h]
+				self.log.info(f'Parent "{cc.name}" object to "{p.name}" object')
+				parent_keep_transform(p, cc)
+
 
 def unique_name_clean_func(name):
 	word_pattern = re.compile(r'(\.[0-9]{3})$', re.IGNORECASE)
