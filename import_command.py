@@ -40,6 +40,7 @@ class Manager:
 		self.element_list = []
 		self.bpy_data = bpy_data
 		self.element_class = element_class
+		self.element_correspondance = {}
 
 		# init incoming name
 		for i, e in enumerate(bpy_data):
@@ -95,14 +96,15 @@ class Manager:
 
 
 class ObjectManager(Manager):
-	def __init__(self, name, bpy_data, element_class, print_message=False):
+	def __init__(self, bpy_data, element_class, print_message=False):
 		super(ObjectManager, self).__init__(
-			name, bpy_data, element_class, print_message)
+			'Object Manager', bpy_data, element_class, print_message)
 
-	def parent(self, parent, child):
+	def parent(self, parent, child, keep_transform=False):
 		self.log.info(f'Parent "{child.name}" object to "{parent.name}" object')
 		child.parent = parent
-		child.matrix_parent_inverse = parent.matrix_world.inverted()
+		if keep_transform:
+			child.matrix_parent_inverse = parent.matrix_world.inverted()
 
 
 class CollectionManager(Manager):
@@ -239,7 +241,7 @@ class ImportCommand():
 		self._imported_objects = None
 		self._valid_collections = None
 		self.cm = CollectionManager(bpy.data.collections, Collection, self.print_debug)
-		self.om = CollectionManager(bpy.data.objects, Object, self.print_debug)
+		self.om = ObjectManager(bpy.data.objects, Object, self.print_debug)
 
 	# Properties
 	@property
@@ -767,17 +769,12 @@ class ImportCommand():
 					bpy.data.libraries.remove(l)
 
 	def parent_children_hierarchy(self):
-		def parent_keep_transform(parent, child):
-			self.log.info(f'Parent "{child.name}" object to "{parent.name}" object')
-			child.object.parent = parent.object
-			child.object.matrix_parent_inverse = parent.object.matrix_world.inverted()
-		
 		for o, c in self.objects_children.items():
 			p = self.om.get_element_by_incoming_name(o)
 			for h in c:
 				cc = self.om.get_element_by_incoming_name(h)
-	
-				parent_keep_transform(p, cc)
+				
+				self.om.parent(p.object, cc.object, keep_transform = True)
 
 
 def unique_name_clean_func(name):
