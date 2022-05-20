@@ -358,7 +358,7 @@ class ImportCommand():
 				for c in self.objects_children[o]:
 					if c not in object_to_process:
 						object_to_process.append(c)
-					if c not in self.source_object_list:
+					if self.export_object_children and c not in self.source_object_list:
 						self.source_object_list.append(c)
 		if self.export_object_children:
 			for c in self.objects_children.values():
@@ -622,21 +622,21 @@ class ImportCommand():
 
 					self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
 	
+	# Helper Methods
 	def remove_objects_chilren(self):
+		self.log.info('Removing Object Children')
 		for o in self.imported_objects:
 			if o not in self.objects_children.keys():
 				continue
-
 			children =  self.objects_children[o]
 
-			if len(children):
-				for c in children:
-					if c not in self.source_object_list:
-						if c in bpy.data.objects:
-							self.log.info(f'Remove object children : "{c}"')
-							bpy.data.objects.remove(bpy.data.objects[c])
+			for c in children:
+				if c not in self.source_object_list:
+					c = self.om.add_element(c)
+					if c.name in bpy.data.objects:
+						self.log.info(f'Remove object children : "{c.name}"')
+						bpy.data.objects.remove(bpy.data.objects[c.name])
 	
-	# Helper Methods
 	def clean_file(self):
 		self.log.info("Cleaning File")
 		for d in dir(bpy.data):
@@ -700,6 +700,8 @@ class ImportCommand():
 		
 		if self.export_object_children:
 			self.parent_children_hierarchy()
+		else:
+			self.remove_objects_chilren()
 				
 	# Traverse Tree and parent lookup from brockmann: https://blender.stackexchange.com/a/172581
 	def traverse_tree(self, t):
@@ -773,7 +775,7 @@ class ImportCommand():
 			p = self.om.get_element_by_incoming_name(o)
 			for h in c:
 				cc = self.om.get_element_by_incoming_name(h)
-				
+
 				self.om.parent(p.object, cc.object, keep_transform = True)
 
 
