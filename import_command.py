@@ -275,6 +275,10 @@ class ImportCommand():
 							default='OVERRIDE',
 							help='Determine if the file will be override or if the data will be appended or linked to destination file',
 							required=True)
+		import_option_group.add_argument('-t', '--target_scene',
+								default='CURRENT_SCENE',
+								help='Determine the scene you want the objects to be appended/linked to',
+								required=False)
 		import_option_group.add_argument('-m', '--export_mode', choices=['APPEND', 'LINK'],
 							default='APPEND',
 							help='Determine if the data is linked or appended from source file',
@@ -318,6 +322,7 @@ class ImportCommand():
 		self.destination_file = args.destination_file
 		self.source_data = args.source_data
 		self.file_override = args.file_override
+		self.target_scene = args.target_scene
 		self.export_mode = args.export_mode
 		self.export_to_clean_file = eval(args.export_to_clean_file)
 		self.pack_external_data = eval(args.pack_external_data)
@@ -468,6 +473,12 @@ class ImportCommand():
 			bpy.data.scenes.remove(bpy.data.scenes[bpy.context.scene.name])
 
 	def import_objects(self):
+		if self.target_scene != 'CURRENT_SCENE':
+			if self.target_scene not in bpy.data.scenes:
+				self.log.error(f'The target scene "{self.target_scene}" doesn\'t exists in the file, the objects will be placed in the current scene')
+			else:
+				self.log.info(f'Switching to "{self.target_scene}" scene')
+				bpy.context.window.scene = bpy.data.scenes[self.target_scene]
 		self.log.info("Importing Objects")
 
 		self.scene_root_collection = bpy.context.scene.collection

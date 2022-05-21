@@ -21,9 +21,9 @@ bl_info = {
 	"category": "Import-Export"
 }
 
-# TODO : 
-#	- Need to support Scene selection in Target File when Appending
-# 	- Need to support object children export
+
+target_scene_items = []
+target_scene_default_item = '("CURRENT_SCENE", "Current Scene", "")'
 
 def _label_multiline(context, text, parent):
 	chars = int(context.region.width / 7)   # 7 pix on 1 character
@@ -31,6 +31,32 @@ def _label_multiline(context, text, parent):
 	text_lines = wrapper.wrap(text=text)
 	for text_line in text_lines:
 		parent.label(text=text_line)
+
+
+def filepath_set(self, value):
+	if path.exists(value):
+		target_scene_items_update(self, value)
+
+
+def target_scene_items_update(self, value):
+	wm = bpy.context.window_manager
+	target_scene_items = [eval(target_scene_default_item)]
+
+	if not path.exists(value):
+		return
+
+	with bpy.data.libraries.load(value, link=True) as (data_from, data_to):
+		for i,s in enumerate(data_from.scenes):
+			target_scene_items.append((s, s, ''))
+			
+	wm.eab_target_scene_items = str(target_scene_items)
+	wm.eab_filepath = value
+
+
+def target_scene_items_list(self, context):
+	wm = context.window_manager
+
+	return eval(wm.eab_target_scene_items)
 
 
 class TILA_OP_ExportAsBlendSaveCurrentFile(bpy.types.Operator):
@@ -54,6 +80,7 @@ class TILA_OP_ExportAsBlendSaveCurrentFile(bpy.types.Operator):
 		return context.window_manager.invoke_confirm(self, event)
 
 
+
 class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper):
 	bl_idname = "export_scene.tila_export_as_blend"
 	bl_label = "Export as Blend"
@@ -70,15 +97,27 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		options={'HIDDEN'},
 	)
 
+	filepath : bpy.props.StringProperty(
+			name="File Path",
+			description="File path used for exporting the BLEND file",
+			maxlen=1024,
+            set=filepath_set)
+
 	files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement)
 	source: bpy.props.EnumProperty(
 	 				items=[("OBJECTS", "Selected Objects", ""),
 							("SCENE", "Current Scene", "")])
 
-	file_override :bpy.props.EnumProperty(
+	file_override: bpy.props.EnumProperty(
 		items=[("OVERRIDE", "Override", ""), ("APPEND_LINK", "Append/Link", "")],
 		name='File Override',
-  		description = ' Choose what behaviour you want if you have choosen an existing file')
+  		description = 'Choose what behaviour you want if you have choosen an existing file')
+
+	target_scene: bpy.props.EnumProperty(
+		items=target_scene_items_list,
+		name='Target Scene',
+		description = 'Choose in which scene you want to append the selected objects',
+		)
  
 	export_mode: bpy.props.EnumProperty(
 		items=[("APPEND", "Append", ""), ("LINK", "Link", "")],
@@ -89,15 +128,15 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 														description='Each Objects will be exported in its respective collection hierarchy from the source Blend file. Otherwise all Objects will be exported in the default collection',
 														default=True)
 	export_to_clean_file: bpy.props.BoolProperty(	name='Export To Clean File',
-												  description='If enable the startup file will be skipped and the data will be exported in a clean empty file',
-												  default=True)
-	export_object_children: bpy.props.BoolProperty(name='Export objects children',
-																description='Export selected objects children',
-																default=False)
+												  	description='If enable the startup file will be skipped and the data will be exported in a clean empty file',
+												  	default=True)
+	export_object_children: bpy.props.BoolProperty(	name='Export objects children',
+													description='Export selected objects children',
+													default=False)
 	export_in_new_collection: bpy.props.BoolProperty(name='Export objects in new collection',
-																description='Each objects, dependencies and collection hierarchy will be placed in a new collection',
-																default=False)
-	new_collection_name: bpy.props.StringProperty(name='Root Collection name',
+													description='Each objects, dependencies and collection hierarchy will be placed in a new collection',
+													default=False)
+	new_collection_name: bpy.props.StringProperty(	name='Root Collection name',
 													description='Name of the new collection that will be created',
 													default='Root Collection')
 	dependencies_in_dedicated_collection: bpy.props.BoolProperty(name='Export dependencies in dedicated collection',
@@ -107,11 +146,11 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 												description='All data exported will be packed into the blend file, to avoid external files dependencies. It would increase drastically the size of the exported file and saving time',
 												default=False)
 	open_exported_blend: bpy.props.BoolProperty(	name='Open Exported Blend',
-												 description='The Exported blend file will be opened after export',
-												 default=False)
-	print_debug: bpy.props.BoolProperty( name='Print debug messages',
-											  description='Print debug message in console',
-											  default=False)
+												 	description='The Exported blend file will be opened after export',
+												 	default=False)
+	print_debug: bpy.props.BoolProperty( 	name='Print debug messages',
+											description='Print debug message in console',
+											default=False)
 	# relink_as_library : bpy.props.BoolProperty(	name='Relink as Library',
 	#                                         	description='After export, the file is relink as a library in the current Scene',
 	#                                          	default=False)
@@ -128,6 +167,8 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		col.alignment = 'RIGHT'
 		col.label(text='Source')
 		col.label(text='File override')
+		if self.source == 'OBJECTS' and self.file_override == 'APPEND_LINK':
+			col.label(text='Target scene')
 		col.label(text='Export mode')
 
 		col = row.column()
@@ -136,6 +177,9 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		r.prop(self, 'source', expand=True)
 		r = col.row()
 		r.prop(self, 'file_override', expand=True)
+		if self.source == 'OBJECTS' and self.file_override == 'APPEND_LINK':
+			r = col.row()
+			col.prop(self, 'target_scene', text ='')
 		r = col.row()
 		r.prop(self, 'export_mode', expand=True)
 
@@ -201,15 +245,16 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			_label_multiline(context=context, text=text, parent=box)
 
 	def execute(self, context):
-		ext = path.splitext(self.filepath)[1].lower()
+		filepath = context.window_manager.eab_filepath
+		ext = path.splitext(filepath)[1].lower()
 		if ext != '.blend':
-			self.filepath += '.blend'
+			filepath += '.blend'
 
 		# Save to a temp folder if currnt file is dirty. Otherwise some objects will not be visible from the target file.
 		if bpy.data.is_dirty:		
 			self.tmpdir = tempfile.mkdtemp()
 			self.current_file = path.join(
-				self.tmpdir, path.basename(self.filepath))
+				self.tmpdir, path.basename(filepath))
 			bpy.ops.wm.save_as_mainfile(
 				'EXEC_DEFAULT', filepath=self.current_file, copy=True)
 			saved_to_temp_folder = True
@@ -217,10 +262,10 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			self.current_file = bpy.data.filepath
 			saved_to_temp_folder = False
 
-		if not path.exists(self.filepath):
+		if not path.exists(filepath):
 			self.file_override == 'OVERRIDE'
 
-		if os.path.normpath(self.filepath) == os.path.normpath(self.current_file):
+		if os.path.normpath(filepath) == os.path.normpath(self.current_file):
 			self.report({'ERROR'}, "Destination file have to be different then source file")
 			return {'CANCELLED'}
 
@@ -228,15 +273,16 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		self.selected_objects = [o.name for o in bpy.context.selected_objects]
 
 		import_parameters = [	'--source_file', self.current_file,
-								'--destination_file', self.filepath,
+								'--destination_file', filepath,
 								'--source_data', self.source,
 								'--file_override', self.file_override,
+                        		'--target_scene', self.target_scene,
 								'--export_mode', self.export_mode,
 								'--export_to_clean_file', str(self.export_to_clean_file),
 								'--pack_external_data', str(self.pack_external_data),
 								'--source_scene_name', context.scene.name,
 								'--source_object_list', *self.selected_objects,
-                       	 		'--export_object_children', str(self.export_object_children),
+					   	 		'--export_object_children', str(self.export_object_children),
 								'--create_collection_hierarchy', str(self.create_collection_hierarchy),
 								'--export_in_new_collection', str(self.export_in_new_collection),
 								'--new_collection_name', self.new_collection_name,
@@ -252,11 +298,9 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		elif self.file_override == 'APPEND_LINK':
 			subprocess.check_call([bpy.app.binary_path,
 						'--background',
-						self.filepath,
+						filepath,
 						'--factory-startup',
 						'--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--'] + import_parameters)
-
-				
 
 		#   Not Working Yet
 		# if self.relink_as_library:
@@ -265,7 +309,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		# 			if c.name in self.objects_collection_list:
 		# 				c.objects.unlink(bpy.data.objects[o.name])
 
-		# 		self.link_blend_file(self.filepath, 'Object', o.name)
+		# 		self.link_blend_file(filepath, 'Object', o.name)
 
 		# 		for c in self.objects_collection_hierarchy.values():
 		# 			for cc in c:
@@ -273,7 +317,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 
 		if self.open_exported_blend:
 			subprocess.Popen([bpy.app.binary_path,
-							  self.filepath
+							  filepath
 							  ])
 
 		if saved_to_temp_folder:
@@ -303,12 +347,19 @@ def menu_func_export(self, context):
 						 text="Export as Blend (.blend)")
 
 
+
 classes = (TILA_OP_ExportAsBlend, TILA_OP_ExportAsBlendSaveCurrentFile)
 
 
 def register():
+	bpy.types.WindowManager.eab_target_scene_items = bpy.props.StringProperty(
+		name="Target Scene items", default=target_scene_default_item)
+	bpy.types.WindowManager.eab_filepath = bpy.props.StringProperty(
+            name="Filepath", default='')
+
 	for cls in classes:
 		bpy.utils.register_class(cls)
+
 
 	bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
@@ -316,7 +367,9 @@ def register():
 def unregister():
 	for cls in reversed(classes):
 		bpy.utils.unregister_class(cls)
-	
+
+	del bpy.types.WindowManager.eab_target_scene_items
+	del bpy.types.WindowManager.eab_filepath
 	bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
 
 
