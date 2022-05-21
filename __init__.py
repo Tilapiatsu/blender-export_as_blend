@@ -23,7 +23,7 @@ bl_info = {
 
 
 target_scene_items = []
-target_scene_default_item = '("CURRENT_SCENE", "Current Scene", "")'
+target_scene_default_item = '("ACTIVE_SCENE", "Active Scene", "")'
 
 def _label_multiline(context, text, parent):
 	chars = int(context.region.width / 7)   # 7 pix on 1 character
@@ -34,7 +34,7 @@ def _label_multiline(context, text, parent):
 
 
 def filepath_set(self, value):
-	if path.exists(value):
+	if path.exists(value) and path.isfile(value) and path.splitext(value)[1].lower() == '.blend':
 		target_scene_items_update(self, value)
 
 
@@ -101,7 +101,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			name="File Path",
 			description="File path used for exporting the BLEND file",
 			maxlen=1024,
-            set=filepath_set)
+			set=filepath_set)
 
 	files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement)
 	source: bpy.props.EnumProperty(
@@ -214,13 +214,20 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		# Operation Description
 		box = layout.box()
 		source = 'Selected objects' if self.source == 'OBJECTS' else 'The current scene'
-		file_override = 'overriding' if self.file_override == 'OVERRIDE' else 'appending/linking in'
+		file_override = ', overriding the file' if self.file_override == 'OVERRIDE' else ''
 		export_mode = 'appended' if self.export_mode ==  'APPEND' else 'linked'
 		if self.file_override == 'OVERRIDE':
 			export_to_clean_file = ' Data will be exported to a clean file.' if self.export_to_clean_file else ' Data will be exported to your startup file.'
 			
 		else:
 			export_to_clean_file = ''
+
+		target_scene = ''
+		if self.source == 'OBJECTS':
+			if self.file_override == 'OVERRIDE':
+				target_scene = ''
+			else:
+				target_scene = f'"{self.target_scene}" scene' if self.target_scene != "ACTIVE_SCENE" else f'active scene'
 
 		if self.source == 'OBJECTS':
 			create_collection_hierarchy = ' The collection hierarchy of selected objects will be preserved.' if self.create_collection_hierarchy else f' Selected objects will be exported without its collection hierarchy.'
@@ -237,7 +244,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		if len(pack_external_data) and len(open_exported_blend):
 			open_exported_blend = 'and ' + open_exported_blend
 
-		text = f'''{source} will be {export_mode} from current file, {file_override} destination file.{export_to_clean_file}{create_collection_hierarchy}{dependencies_in_dedicated_collection}{export_in_new_collection}'''
+		text = f'''{source} will be {export_mode} from current file to destination file's {target_scene}{file_override}.{export_to_clean_file}{create_collection_hierarchy}{dependencies_in_dedicated_collection}{export_in_new_collection}'''
 		_label_multiline(context=context, text=text, parent=box)
 
 		if len(pack_external_data) or len(open_exported_blend):
@@ -276,7 +283,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 								'--destination_file', filepath,
 								'--source_data', self.source,
 								'--file_override', self.file_override,
-                        		'--target_scene', self.target_scene,
+								'--target_scene', self.target_scene,
 								'--export_mode', self.export_mode,
 								'--export_to_clean_file', str(self.export_to_clean_file),
 								'--pack_external_data', str(self.pack_external_data),
@@ -355,7 +362,7 @@ def register():
 	bpy.types.WindowManager.eab_target_scene_items = bpy.props.StringProperty(
 		name="Target Scene items", default=target_scene_default_item)
 	bpy.types.WindowManager.eab_filepath = bpy.props.StringProperty(
-            name="Filepath", default='')
+			name="Filepath", default='')
 
 	for cls in classes:
 		bpy.utils.register_class(cls)

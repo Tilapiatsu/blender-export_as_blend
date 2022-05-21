@@ -21,8 +21,10 @@ This addon works with objects or scene only at the moment.
 |-----------:|-----------|
 |**Source**| Let you choose what to export : `Selected Objects` only export current object selection, `Current Scene` will export the entire current scene.|
 |**File override**|`Override` will override the selected file if exists, create new if not, `Append/Link` will use `Export mode` parameter to Link or Append data to destination file|
+|**Target Scene**|if `File override` is set to `Append/Link` you have to choose in which scene you want your objects to go|
 |**Export mode**|`Append` will append data to the exported blend file , and `Link` will Link data to the exported blend file.|
 |**Pack External Data**| Any external data will be written into Blend file ( Textures etc...). It will drastically increase saving time and file size, but make the file easier to transfer.|
+|**Export objects children**|Export selected object children|
 |**Export to Clean File**|If enable, the data will be exported to a clean file without any data except from your source objects. Otherwise the data will be exported in a scene with your Startup file as a starting point that can contain many data depending on your configuration.|
 |**Create Collection Hierarchy**| The collection hierarchy of the selected objects will be recreated in the exported file. If disable, all objects will be exported in the root collection.|
 |**Export objects in new collection**|If enable everything will be place under a collection which name is defined by `New collection Name`|

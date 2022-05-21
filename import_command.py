@@ -89,6 +89,9 @@ class Manager:
 		if name in self.bpy_data:
 			bpy_extras.io_utils.unique_name(
 				self.bpy_data[name], name, self.element_correspondance, clean_func=unique_name_clean_func)
+		else:
+			self.log.info(f'{name} not in {self.bpy_data}')
+
 		elem = self.element_class(manager = self, string = name)
 		if elem not in self.element_list:
 			self.element_list.append(elem)
@@ -161,6 +164,7 @@ class CollectionManager(Manager):
 		layerColl = self.get_layer_collection_by_name(layer_collection, collection_name)
 		bpy.context.view_layer.active_layer_collection = layerColl
 
+
 class Element:
 	def __init__(self, manager, string):
 		self._string = {'incoming': string, 'local': string}
@@ -225,7 +229,7 @@ class Object(Element):
 			self.log.error(f'"{self.name}" Object not in current file')
 			try:
 				ex = ValueError()
-				ex.strerror = f'Name "{self.name}" not in Objects'
+				ex.strerror = f'object "{self.name}" not in {self.manager.bpy_data}'
 				raise ex
 			except ValueError as e:
 				print(f'Value Error : {e.strerror}')
@@ -276,9 +280,9 @@ class ImportCommand():
 							help='Determine if the file will be override or if the data will be appended or linked to destination file',
 							required=True)
 		import_option_group.add_argument('-t', '--target_scene',
-								default='CURRENT_SCENE',
-								help='Determine the scene you want the objects to be appended/linked to',
-								required=False)
+							default='ACTIVE_SCENE',
+							help='Determine the scene you want the objects to be appended/linked to',
+							required=False)
 		import_option_group.add_argument('-m', '--export_mode', choices=['APPEND', 'LINK'],
 							default='APPEND',
 							help='Determine if the data is linked or appended from source file',
@@ -473,12 +477,13 @@ class ImportCommand():
 			bpy.data.scenes.remove(bpy.data.scenes[bpy.context.scene.name])
 
 	def import_objects(self):
-		if self.target_scene != 'CURRENT_SCENE':
+		if self.target_scene != 'ACTIVE_SCENE':
 			if self.target_scene not in bpy.data.scenes:
 				self.log.error(f'The target scene "{self.target_scene}" doesn\'t exists in the file, the objects will be placed in the current scene')
 			else:
 				self.log.info(f'Switching to "{self.target_scene}" scene')
 				bpy.context.window.scene = bpy.data.scenes[self.target_scene]
+
 		self.log.info("Importing Objects")
 
 		self.scene_root_collection = bpy.context.scene.collection
@@ -673,7 +678,6 @@ class ImportCommand():
 						else:
 							self.log.info(f"Importing : {x.name}")
 						collection.objects.link(x)
-						self.om.add_element(x.name)
 		
 		def load_loop(data_from, data_to, object_to_include):
 			object_to_include = object_to_include.copy()
@@ -703,6 +707,7 @@ class ImportCommand():
 		self.log.info(f'Make all imported objects local')
 		for o in self.imported_objects.values():
 			self.log.info(f'Make local : {o.name}')
+			self.om.add_element(o.name)
 			o.make_local()
 			if o.data is None:
 				continue
@@ -786,7 +791,7 @@ class ImportCommand():
 			p = self.om.get_element_by_incoming_name(o)
 			for h in c:
 				cc = self.om.get_element_by_incoming_name(h)
-
+				
 				self.om.parent(p.object, cc.object, keep_transform = True)
 
 
