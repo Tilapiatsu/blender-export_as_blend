@@ -231,7 +231,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 
 		if self.source == 'OBJECTS':
 			create_collection_hierarchy = ' The collection hierarchy of selected objects will be preserved.' if self.create_collection_hierarchy else f' Selected objects will be exported without its collection hierarchy.'
-			dependencies_in_dedicated_collection = ' All objects dependencies will be placed under a "Dependencies" collection.' if self.dependencies_in_dedicated_collection else ' Each object dependencies will be exported the same collection hierarchy than the current file.'
+			dependencies_in_dedicated_collection = ' All objects dependencies will be placed under a "Dependencies" collection.' if self.dependencies_in_dedicated_collection else ' Each object dependencies will be exported in the same collection hierarchy than the current file.'
 			export_in_new_collection = f' All Objects and Dependencies will be exported in a root collection called "{self.new_collection_name}".' if self.export_in_new_collection else ''
 		else:
 			create_collection_hierarchy = ''
