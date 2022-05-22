@@ -129,7 +129,7 @@ class Manager:
 			if clean_func is None:
 				name_new = name_new_orig = name
 			else:
-				name_new, has_number = clean_func(name, name_dict)
+				name_new, has_number = clean_func(name)
 				name_new_orig = name_new
 				if name_new not in name_dict_values:
 					name_dict_values.append(name_new)
@@ -868,7 +868,7 @@ class ImportCommand():
 				self.om.parent(p.object, cc.object, keep_transform = True)
 
 
-def unique_name_clean_func(name, name_dict):
+def unique_name_clean_func(name):
 	word_pattern = re.compile(r'(\.[0-9]{3})$', re.IGNORECASE)
 	name_iter = word_pattern.finditer(name)
 	name_iter_match = [w.group(1) for w in name_iter]
