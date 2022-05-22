@@ -44,7 +44,9 @@ class Manager:
 
 		# init incoming name
 		for i, e in enumerate(bpy_data):
-			bpy_extras.io_utils.unique_name(i, e.name, self.element_correspondance)
+			if bpy_data[i].library != None and e.name in self.element_correspondance.values():
+				continue
+			self.unique_name(i, e.name, self.element_correspondance)
 	
 	@property
 	def bpy_type(self):
@@ -56,7 +58,7 @@ class Manager:
 				ex.strerror = f"No element in  {type(self.bpy_data)}"
 				raise ex
 			except ValueError as e:
-				print(f'Value Error : {e.strerror}')
+				self.log.error(f'Value Error : {e.strerror}')
 
 	def get_element_by_incoming_name(self, name):
 		e = [elem for elem in self.element_list if elem.incoming_name == name]
@@ -87,15 +89,74 @@ class Manager:
 
 	def add_element(self, name):
 		if name in self.bpy_data:
-			bpy_extras.io_utils.unique_name(
+			self.unique_name(
 				self.bpy_data[name], name, self.element_correspondance, clean_func=unique_name_clean_func)
-		else:
-			self.log.info(f'{name} not in {self.bpy_data}')
+
 
 		elem = self.element_class(manager = self, string = name)
 		if elem not in self.element_list:
 			self.element_list.append(elem)
 		return elem
+
+	# a modified version of bpy_extras.io_utils
+	def unique_name(self, key, name, name_dict, name_max=-1, clean_func=None, sep="."):
+		"""
+		Helper function for storing unique names which may have special characters
+		stripped and restricted to a maximum length.
+
+		:arg key: unique item this name belongs to, name_dict[key] will be reused
+		when available.
+		This can be the object, mesh, material, etc instance itself.
+		:type key: any hashable object associated with the *name*.
+		:arg name: The name used to create a unique value in *name_dict*.
+		:type name: string
+		:arg name_dict: This is used to cache namespace to ensure no collisions
+		occur, this should be an empty dict initially and only modified by this
+		function.
+		:type name_dict: dict
+		:arg clean_func: Function to call on *name* before creating a unique value.
+		:type clean_func: function
+		:arg sep: Separator to use when between the name and a number when a
+		duplicate name is found.
+		:type sep: string
+		"""
+		name_new = name_dict.get(key)
+		if name_new is None:
+			count = 0
+			has_number = False
+			name_dict_values = list(name_dict.values())
+
+			if clean_func is None:
+				name_new = name_new_orig = name
+			else:
+				name_new, has_number = clean_func(name, name_dict)
+				name_new_orig = name_new
+				if name_new not in name_dict_values:
+					name_dict_values.append(name_new)
+			if has_number or name_new in name_dict_values:
+				if name_max == -1:
+					while name_new in name_dict_values:
+						count += 1
+						name_new = "%s%s%03d" % (
+							name_new_orig,
+							sep,
+							count,
+						)
+				else:
+					name_new = name_new[:name_max]
+					while name_new in name_dict_values:
+						count += 1
+						count_str = "%03d" % count
+						name_new = "%.*s%s%s" % (
+							name_max - (len(count_str) + 1),
+							name_new_orig,
+							sep,
+							count_str,
+						)
+
+			name_dict[key] = name_new
+
+		return name_new
 
 
 class ObjectManager(Manager):
@@ -213,7 +274,7 @@ class Collection(Element):
 				ex.strerror = f'Name "{self.name}" not in Collections'
 				raise ex
 			except ValueError as e:
-				print(f'Value Error : {e.strerror}')
+				self.log.error(f'Value Error : {e.strerror}')
 		else:
 			return self.manager.bpy_data[self.name]
 
@@ -232,7 +293,7 @@ class Object(Element):
 				ex.strerror = f'object "{self.name}" not in {self.manager.bpy_data}'
 				raise ex
 			except ValueError as e:
-				print(f'Value Error : {e.strerror}')
+				self.log.error(f'Value Error : {e.strerror}')
 		else:
 			return self.manager.bpy_data[self.name]
 
@@ -341,9 +402,15 @@ class ImportCommand():
 	
 	def init_source_lists(self):
 		# register previously loaded libraries
-		self.previous_library_objects = {o.name: o for o in bpy.data.objects if o.library is not None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
-		self.previous_library_collections = {c.name: c for c in bpy.data.collections if c.library is not None and os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file)}
-		self.previous_library_scenes = {s.name: s for s in bpy.data.scenes if s.library is not None and os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file)}
+		self.previous_library_objects = {	o.name: o for o in bpy.data.objects if
+											o.library is not None and
+											os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
+		self.previous_library_collections = {	c.name: c for c in bpy.data.collections if
+												c.library is not None and
+												os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file)}
+		self.previous_library_scenes = {s.name: s for s in bpy.data.scenes if
+										s.library is not None and
+										os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file)}
 
 		with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
 			for s in data_from.scenes:
@@ -353,10 +420,16 @@ class ImportCommand():
 			for o in data_from.objects:
 				data_to.objects.append(o)
 		
-		# register imported libraries data
-		objects = {o.name:o for o in bpy.data.objects if o.library is not None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
-		collections = {c.name:c for c in bpy.data.collections if c.library is not None and os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file)}
-		scenes = {s.name:s for s in bpy.data.scenes if s.library is not None and os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file)}
+		# register imported library datas
+		objects = {	o.name: o for o in bpy.data.objects if
+					o.library is not None and
+					os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
+		collections = {	c.name: c for c in bpy.data.collections if
+						c.library is not None and
+						os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file)}
+		scenes = {	s.name:s for s in bpy.data.scenes if
+					s.library is not None and
+					os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file)}
 		
 		self.objects_children = {}
 		object_to_process = self.source_object_list.copy()
@@ -648,7 +721,7 @@ class ImportCommand():
 
 			for c in children:
 				if c not in self.source_object_list:
-					c = self.om.add_element(c)
+					c = self.om.get_element_by_incoming_name(c)
 					if c.name in bpy.data.objects:
 						self.log.info(f'Remove object children : "{c.name}"')
 						bpy.data.objects.remove(bpy.data.objects[c.name])
@@ -795,15 +868,15 @@ class ImportCommand():
 				self.om.parent(p.object, cc.object, keep_transform = True)
 
 
-def unique_name_clean_func(name):
+def unique_name_clean_func(name, name_dict):
 	word_pattern = re.compile(r'(\.[0-9]{3})$', re.IGNORECASE)
 	name_iter = word_pattern.finditer(name)
 	name_iter_match = [w.group(1) for w in name_iter]
 
 	if len(name_iter_match) and name_iter_match[0] is not None:
-			return name.replace(name_iter_match[0], '')
+		return name.replace(name_iter_match[0], ''), True
 	else:
-		return name
+		return name, False
 
 if __name__ == "__main__":
 	IC = ImportCommand(sys.argv)
