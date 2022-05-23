@@ -9,6 +9,7 @@ import stat
 import sys
 from os import path
 
+# TODO : Need to fix collection that loose dependencies after export
 
 bl_info = {
 	"name": "Export as Blend",
