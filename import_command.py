@@ -34,9 +34,9 @@ class Logger(object):
 
 
 class Manager:
-	element_correspondance = {}
 	def __init__(self, name, bpy_data, element_class, print_message=False):
 		self.log = Logger(addon_name=name, print=print_message)
+		self.print_message = print_message
 		self.element_list = []
 		self.bpy_data = bpy_data
 		self.element_class = element_class
@@ -78,25 +78,44 @@ class Manager:
 		if isinstance(element, self.element_class):
 			return element
 		elif isinstance(element, self.bpy_type):
-			return self.element_class(manager=self, string=element.name)
+			return self.element_class(manager=self, string=element.name, print_message=self.print_message)
 		else:
 			try:
 				ex = ValueError()
 				ex.strerror = f"Unrecognise type for Collection {type(element)}"
 				raise ex
 			except ValueError as e:
-				print(f'Value Error : {e.strerror}')
+				self.log.error(f'Value Error : {e.strerror}')
 
-	def add_element(self, name):
-		if name in self.bpy_data:
-			self.unique_name(
-				self.bpy_data[name], name, self.element_correspondance, clean_func=unique_name_clean_func)
+	def add_element(self, name, register=False, append_to_list=True):
+		if register:
+			if name in self.bpy_data:
+				self.element_correspondance[self.bpy_data[name]] = name
 
+		elif name in self.bpy_data:
+			self.unique_name(self.bpy_data[name], name, self.element_correspondance, clean_func=unique_name_clean_func)
+			if name != self.element_correspondance[self.bpy_data[name]]:
+				self.log.info(f'New Name for {name} = {self.element_correspondance[self.bpy_data[name]]}')
 
-		elem = self.element_class(manager = self, string = name)
-		if elem not in self.element_list:
-			self.element_list.append(elem)
+		
+		elem = self.element_class(manager = self, string = name, print_message=self.print_message)
+		if append_to_list:
+			if elem not in self.element_list:
+				self.element_list.append(elem)
 		return elem
+
+	def get_element(self, name):
+		valid_elements = {e:n for e,n in self.element_correspondance.items() if not isinstance(e, int)}
+		print(valid_elements)
+		for e,n in valid_elements.items():
+			if n == name:
+				return e
+
+		return None
+	
+	def update_element_name(self, obj, name):
+		if obj in self.element_correspondance.keys():
+			self.element_correspondance[obj] = name
 
 	# a modified version of bpy_extras.io_utils
 	def unique_name(self, key, name, name_dict, name_max=-1, clean_func=None, sep="."):
@@ -122,7 +141,7 @@ class Manager:
 		"""
 		name_new = name_dict.get(key)
 		if name_new is None:
-			count = 0
+			count = 1
 			has_number = False
 			name_dict_values = list(name_dict.values())
 
@@ -131,21 +150,18 @@ class Manager:
 			else:
 				name_new, has_number = clean_func(name)
 				name_new_orig = name_new
-				if name_new not in name_dict_values:
-					name_dict_values.append(name_new)
 			if has_number or name_new in name_dict_values:
 				if name_max == -1:
 					while name_new in name_dict_values:
-						count += 1
 						name_new = "%s%s%03d" % (
 							name_new_orig,
 							sep,
 							count,
 						)
+						count += 1
 				else:
 					name_new = name_new[:name_max]
 					while name_new in name_dict_values:
-						count += 1
 						count_str = "%03d" % count
 						name_new = "%.*s%s%s" % (
 							name_max - (len(count_str) + 1),
@@ -153,6 +169,7 @@ class Manager:
 							sep,
 							count_str,
 						)
+						count += 1
 
 			name_dict[key] = name_new
 
@@ -161,14 +178,21 @@ class Manager:
 
 class ObjectManager(Manager):
 	def __init__(self, bpy_data, element_class, print_message=False):
-		super(ObjectManager, self).__init__(
-			'Object Manager', bpy_data, element_class, print_message)
+		super(ObjectManager, self).__init__('Object Manager', bpy_data, element_class, print_message)
 
+	def add_element(self, obj, append_to_list=True):
+		elem = self.element_class(manager=self, obj=obj, print_message=self.print_message)
+		if append_to_list:
+			if elem not in self.element_list:
+				self.element_list.append(elem)
+		return elem
+	
 	def parent(self, parent, child, keep_transform=False):
 		self.log.info(f'Parent "{child.name}" object to "{parent.name}" object')
-		child.parent = parent
+		print(child.object, parent.object)
+		child.object.parent = parent.object
 		if keep_transform:
-			child.matrix_parent_inverse = parent.matrix_world.inverted()
+			child.object.matrix_parent_inverse = parent.object.matrix_world.inverted()
 
 
 class CollectionManager(Manager):
@@ -280,22 +304,23 @@ class Collection(Element):
 
 
 class Object(Element):
-	def __init__(self, manager, string, print_message=False):
-		super(Object, self).__init__(manager, string)
+	def __init__(self, manager, obj, print_message=False):
+		super(Object, self).__init__(manager, obj.name)
 		self.log = Logger(addon_name='Object', print=print_message)
+		self.object = obj
 
-	@property
-	def object(self):
-		if self.name not in self.manager.bpy_data:
-			self.log.error(f'"{self.name}" Object not in current file')
-			try:
-				ex = ValueError()
-				ex.strerror = f'object "{self.name}" not in {self.manager.bpy_data}'
-				raise ex
-			except ValueError as e:
-				self.log.error(f'Value Error : {e.strerror}')
-		else:
-			return self.manager.bpy_data[self.name]
+	# @property
+	# def object(self):
+	# 	if self.name not in self.manager.bpy_data:
+	# 		self.log.error(f'"{self.name}" Object not in current file')
+	# 		try:
+	# 			ex = ValueError()
+	# 			ex.strerror = f'object "{self.name}" not in {self.manager.bpy_data}'
+	# 			raise ex
+	# 		except ValueError as e:
+	# 			self.log.error(f'Value Error : {e.strerror}')
+	# 	else:
+	# 		return self.manager.bpy_data[self.name]
 
 
 class ImportCommand():
@@ -433,8 +458,9 @@ class ImportCommand():
 		
 		self.objects_children = {}
 		object_to_process = self.source_object_list.copy()
+
 		while len(object_to_process):
-			o = object_to_process.pop()
+			o = object_to_process.pop(0)
 			self.objects_children[o] = self.get_object_children(objects[o])
 			if len(self.objects_children[o]):
 				for c in self.objects_children[o]:
@@ -646,12 +672,12 @@ class ImportCommand():
 		for o in self.source_object_list:
 			for c in self.selected_objects_parent_collection[o]:
 				if c in self.parent_collections.keys():
-					c = self.cm.add_element(c)
+					c = self.cm.get_element_by_incoming_name(c)
 					if c.name not in bpy.data.collections:
 						self.cm.create_collection(c.name)
 						parents = self.parent_collections[c.incoming_name]
 						for p in parents:
-							parent = self.cm.add_element(p)
+							parent = self.cm.get_element_by_incoming_name(p)
 							if parent.name not in bpy.data.collections:
 								self.cm.create_collection(parent.name)
 							self.cm.link_collection_to_collection(c, parent)
@@ -660,7 +686,7 @@ class ImportCommand():
 	
 	def link_dependencies_in_dedicated_collection(self):
 		if self.have_dependencies:
-			dependency_collection = self.cm.add_collection(DEPENDENCIES_COLLECTION_NAME)
+			dependency_collection = self.cm.add_element(DEPENDENCIES_COLLECTION_NAME)
 			self.log.info(f'Link Dependencies in "{dependency_collection.name}" collection')
 			dependency_collection = self.cm.create_collection(dependency_collection.name)
 			self.cm.link_collection_to_collection(dependency_collection, self.root_collection)
@@ -690,7 +716,7 @@ class ImportCommand():
 					for hh in h:
 						hierarchy = list(reversed(hh))
 						for i, c in enumerate(hierarchy):
-							c = self.cm.add_collection(c)
+							c = self.cm.add_element(c)
 							if i == 0:
 								if c.name not in bpy.data.collections:
 									self.cm.create_collection(c.name)
@@ -702,11 +728,11 @@ class ImportCommand():
 								if c.name not in bpy.data.collections:
 									self.cm.create_collection(c.name)
 		 
-								parent_coll = self.cm.add_collection(hierarchy[i-1])
+								parent_coll = self.cm.add_element(hierarchy[i-1])
 								if c.name not in parent_coll.children:
 									self.cm.link_collection_to_collection(c, parent_coll)
 						else:
-							parent_coll = self.cm.add_collection(hierarchy[len(hierarchy)-1])
+							parent_coll = self.cm.add_element(hierarchy[len(hierarchy)-1])
 							self.cm.link_object_to_collection(self.imported_objects[o], parent_coll)
 
 					self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
@@ -780,8 +806,10 @@ class ImportCommand():
 		self.log.info(f'Make all imported objects local')
 		for o in self.imported_objects.values():
 			self.log.info(f'Make local : {o.name}')
-			self.om.add_element(o.name)
+			# name = o.name
+			self.om.add_element(o)
 			o.make_local()
+			# self.om.update_element_name(o, name)
 			if o.data is None:
 				continue
 			
@@ -791,7 +819,8 @@ class ImportCommand():
 			self.parent_children_hierarchy()
 		else:
 			self.remove_objects_chilren()
-				
+		
+
 	# Traverse Tree and parent lookup from brockmann: https://blender.stackexchange.com/a/172581
 	def traverse_tree(self, t):
 		yield t
@@ -860,12 +889,14 @@ class ImportCommand():
 					bpy.data.libraries.remove(l)
 
 	def parent_children_hierarchy(self):
+		print(self.objects_children)
 		for o, c in self.objects_children.items():
 			p = self.om.get_element_by_incoming_name(o)
+			print('parent = ', p.name, o)
 			for h in c:
 				cc = self.om.get_element_by_incoming_name(h)
-				
-				self.om.parent(p.object, cc.object, keep_transform = True)
+				print('child = ', cc.name, h)
+				self.om.parent(p, cc, keep_transform = True)
 
 
 def unique_name_clean_func(name):
