@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import sys
+
 import bpy
 import os
 import bpy_extras
@@ -64,14 +65,15 @@ class Manager:
 		e = [elem for elem in self.element_list if elem.incoming_name == name]
 		if len(e):
 			return e[0]
-
+		
 		return None
+
 
 	def get_element_by_local_name(self, name):
 		e = [elem for elem in self.element_list if elem.name == name]
 		if len(e):
 			return e[0]
-
+		
 		return None
 
 	def conform_element(self, element):
@@ -79,6 +81,8 @@ class Manager:
 			return element
 		elif isinstance(element, self.bpy_type):
 			return self.element_class(manager=self, string=element.name, print_message=self.print_message)
+		elif isinstance(element, str):
+			return self.element_class(manager=self, string=element, print_message=self.print_message)
 		else:
 			try:
 				ex = ValueError()
@@ -87,38 +91,28 @@ class Manager:
 			except ValueError as e:
 				self.log.error(f'Value Error : {e.strerror}')
 
-	def add_element(self, name, register=False, append_to_list=True):
-		if register:
-			if name in self.bpy_data:
-				self.element_correspondance[self.bpy_data[name]] = name
-
-		elif name in self.bpy_data:
-			self.unique_name(self.bpy_data[name], name, self.element_correspondance, clean_func=unique_name_clean_func)
-			if name != self.element_correspondance[self.bpy_data[name]]:
-				self.log.info(f'New Name for {name} = {self.element_correspondance[self.bpy_data[name]]}')
-
-		
-		elem = self.element_class(manager = self, string = name, print_message=self.print_message)
-		if append_to_list:
-			if elem not in self.element_list:
-				self.element_list.append(elem)
-		return elem
-
 	def get_element(self, name):
-		valid_elements = {e:n for e,n in self.element_correspondance.items() if not isinstance(e, int)}
-		print(valid_elements)
+		valid_elements = {e: n for e, n in self.element_correspondance.items() if not isinstance(e, int)}
 		for e,n in valid_elements.items():
-			if n == name:
-				return e
+			if n == name and not isinstance(e, int):
+				self.log.info(f'Element found : {e}')
+				return self.conform_element(e)
 
-		return None
+		return self.add_element(name, register=True)
 	
-	def update_element_name(self, obj, name):
-		if obj in self.element_correspondance.keys():
-			self.element_correspondance[obj] = name
+	def update_element_name(self, elem, name):
+		if elem in self.element_correspondance.keys():
+			self.element_correspondance[elem] = name
+			self.log.info(f'Updating element {elem} name to "{name}"')
+		else:
+			self.register_element_correspondance(elem)
+
+	def register_element_correspondance(self, elem):
+		if elem not in self.element_correspondance.keys():
+			self.element_correspondance[elem] = elem.name
 
 	# a modified version of bpy_extras.io_utils
-	def unique_name(self, key, name, name_dict, name_max=-1, clean_func=None, sep="."):
+	def unique_name(self, key, name, name_dict, name_max=-1, clean_func=None, sep=".", register=True):
 		"""
 		Helper function for storing unique names which may have special characters
 		stripped and restricted to a maximum length.
@@ -170,26 +164,30 @@ class Manager:
 							count_str,
 						)
 						count += 1
-
-			name_dict[key] = name_new
+			
+			if register:
+				name_dict[key] = name_new
 
 		return name_new
-
+	
 
 class ObjectManager(Manager):
 	def __init__(self, bpy_data, element_class, print_message=False):
 		super(ObjectManager, self).__init__('Object Manager', bpy_data, element_class, print_message)
 
-	def add_element(self, obj, append_to_list=True):
+	def add_element(self, obj, register_correspondance=False, append_to_list=True):
+		if register_correspondance:
+			self.register_element_correspondance(obj)
+
 		elem = self.element_class(manager=self, obj=obj, print_message=self.print_message)
 		if append_to_list:
 			if elem not in self.element_list:
 				self.element_list.append(elem)
+
 		return elem
 	
 	def parent(self, parent, child, keep_transform=False):
 		self.log.info(f'Parent "{child.name}" object to "{parent.name}" object')
-		print(child.object, parent.object)
 		child.object.parent = parent.object
 		if keep_transform:
 			child.object.matrix_parent_inverse = parent.object.matrix_world.inverted()
@@ -199,20 +197,50 @@ class CollectionManager(Manager):
 	def __init__(self, bpy_data, element_class, print_message=False):
 		super(CollectionManager, self).__init__('Collection Manager', bpy_data, element_class, print_message)
 	
+	def get_element_by_incoming_name(self, name):
+		self.log.info(f'Get element by incomming name : "{name}"')
+		e = [elem for elem in self.element_list if elem.incoming_name == name]
+		if len(e):
+			self.log.info(f'Element Found : "{e[0].name}"')
+			return e[0]
+		else:
+			self.log.info(f'Element NOT Found : Adding new Element')
+			return self.add_element(name, register=True)
+	
+	def add_element(self, name, append_to_list=True, register=False):
+		new_name = self.unique_name(name, name, self.element_correspondance, clean_func=unique_name_clean_func, register=register)
+		if new_name != name:
+			self.log.info(f'New name for "{name}" is "{new_name}"')
+
+		elem = self.element_class(manager=self, string=name, print_message=self.print_message)
+		elem.name = new_name
+		if append_to_list:
+			if elem not in self.element_list:
+				self.element_list.append(elem)
+		return elem
+
 	# Linking and Unlinking Methods
 	def create_collection(self, collection_name):
-		coll = self.add_element(collection_name)
+		if collection_name not in self.element_correspondance.values():
+			coll = self.add_element(collection_name)
+		else:
+			coll = self.get_element(collection_name)
 		self.log.info(f'Create new collection : "{coll.name}"')
 		self.bpy_data.new(coll.name)
+		self.register_element_correspondance(self.bpy_data[coll.name])
 		return coll
 
 	def link_object_to_collection(self, object, collection):
 		collection = self.conform_element(collection).collection
+		if object.name in collection.objects:
+			return
 		self.log.info(f'Link object "{object.name}" to collection "{collection.name}"')
 		collection.objects.link(object)
 
 	def unlink_object_from_collection(self, object, collection):
 		collection = self.conform_element(collection).collection
+		if object.name not in collection.objects:
+			return
 		self.log.info(f'Unlink object "{object.name}" from collection "{collection.name}"')
 		collection.objects.unlink(object)
 
@@ -261,17 +289,18 @@ class Element:
 
 	@property
 	def name(self):
-		self.fix_local_element_name()
+		# self.fix_local_element_name()
 		return self._string['local']
 
 	@name.setter
 	def name(self, value):
+		print(f'Setting local name from "{self._string["local"]}" to "{value}"')
 		self._string['local'] = value
 
-	def fix_local_element_name(self):
-		if self.incoming_name in self.manager.bpy_data:
-			if self.manager.bpy_data[self.incoming_name] in self.manager.element_correspondance.keys():
-				self._string['local'] = self.manager.element_correspondance[self.manager.bpy_data[self.incoming_name]]
+	# def fix_local_element_name(self):
+	# 	if self.incoming_name in self.manager.bpy_data:
+	# 		if self.manager.bpy_data[self.incoming_name] in self.manager.element_correspondance.keys():
+	# 			self._string['local'] = self.manager.element_correspondance[self.manager.bpy_data[self.incoming_name]]
 
 
 class Collection(Element):
@@ -307,20 +336,22 @@ class Object(Element):
 	def __init__(self, manager, obj, print_message=False):
 		super(Object, self).__init__(manager, obj.name)
 		self.log = Logger(addon_name='Object', print=print_message)
-		self.object = obj
+		self._object = obj
 
-	# @property
-	# def object(self):
-	# 	if self.name not in self.manager.bpy_data:
-	# 		self.log.error(f'"{self.name}" Object not in current file')
-	# 		try:
-	# 			ex = ValueError()
-	# 			ex.strerror = f'object "{self.name}" not in {self.manager.bpy_data}'
-	# 			raise ex
-	# 		except ValueError as e:
-	# 			self.log.error(f'Value Error : {e.strerror}')
-	# 	else:
-	# 		return self.manager.bpy_data[self.name]
+	@property
+	def object(self):
+		if self._object is None or self.name not in self.manager.bpy_data:
+			self.log.error(f'"{self.name}" Object not in current file')
+			try:
+				ex = ValueError()
+				ex.strerror = f'object "{self.name}" not in {self.manager.bpy_data}'
+				raise ex
+			except ValueError as e:
+				self.log.error(f'Value Error : {e.strerror}')
+		elif self.name in self.manager.bpy_data:
+			return self.manager.bpy_data[self.name]
+		else:
+			return self._object
 
 
 class ImportCommand():
@@ -338,13 +369,16 @@ class ImportCommand():
 	def imported_objects(self):
 		if self._imported_objects is None:
 			if os.path.exists(self.source_file) :
-				self._imported_objects = {o.name:o for o in bpy.data.objects if o.library != None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
+				self._imported_objects = {o.name:o for o in bpy.data.objects if o.library != None and self.conform_path(o.library.filepath) == self.conform_path(self.source_file)}
 		return self._imported_objects
 
-	@property
-	def have_dependencies(self):
-		return len(self.source_object_list) < len(bpy.context.scene.objects) - self.initial_count
+	# @property
+	# def have_dependencies(self):
+	# 	return len(self.source_object_list) < len(bpy.context.scene.objects) - self.initial_count
 
+	def conform_path(self, path):
+		return os.path.normpath(bpy.path.abspath(path))
+		
 	def parse_argsv(self, argv):
 		parser = argparse.ArgumentParser(description='This command allow you to import objects or scene to a blend file and save it once done.')
 
@@ -429,13 +463,15 @@ class ImportCommand():
 		# register previously loaded libraries
 		self.previous_library_objects = {	o.name: o for o in bpy.data.objects if
 											o.library is not None and
-											os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
+											self.conform_path(o.library.filepath) == self.conform_path(self.source_file)}
 		self.previous_library_collections = {	c.name: c for c in bpy.data.collections if
 												c.library is not None and
-												os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file)}
+												self.conform_path(c.library.filepath) == self.conform_path(self.source_file)}
 		self.previous_library_scenes = {s.name: s for s in bpy.data.scenes if
 										s.library is not None and
-										os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file)}
+										self.conform_path(s.library.filepath) == self.conform_path(self.source_file)}
+
+		self.previous_collections = {	c.name: c for c in bpy.data.collections}
 
 		with bpy.data.libraries.load(self.source_file, link=True) as (data_from, data_to):
 			for s in data_from.scenes:
@@ -444,17 +480,17 @@ class ImportCommand():
 				data_to.collections.append(c)
 			for o in data_from.objects:
 				data_to.objects.append(o)
-		
+
 		# register imported library datas
 		objects = {	o.name: o for o in bpy.data.objects if
 					o.library is not None and
-					os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file)}
+					self.conform_path(o.library.filepath) == self.conform_path(self.source_file)}
 		collections = {	c.name: c for c in bpy.data.collections if
 						c.library is not None and
-						os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file)}
+				  		self.conform_path(c.library.filepath) == self.conform_path(self.source_file)}
 		scenes = {	s.name:s for s in bpy.data.scenes if
 					s.library is not None and
-					os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file)}
+					self.conform_path(s.library.filepath) == self.conform_path(self.source_file)}
 		
 		self.objects_children = {}
 		object_to_process = self.source_object_list.copy()
@@ -501,6 +537,8 @@ class ImportCommand():
 		for o in objects.values():
 			hierarchies = []
 			for c in o.users_collection:
+				if c.name in self.previous_collections.keys():
+					continue
 				coll = []
 				self.get_parent_collection_names(c, coll, collections.values())
 				hierarchies.append(coll)
@@ -596,6 +634,8 @@ class ImportCommand():
 		# Link object from source file
 		self.link_objects(self.source_file, self.source_object_list, bpy.data.collections[IMPORT_COLLECTION_NAME])
 
+		self.have_dependencies = len(bpy.data.collections[IMPORT_COLLECTION_NAME].objects) > len(self.source_object_list)
+
 		self.cm.set_collection_active(self.scene_root_collection.name)
 
 		# Create New Collection and Link all imported object in it
@@ -620,6 +660,11 @@ class ImportCommand():
 		# Remove Import Collection and make local if needed
 		bpy.data.collections.remove(bpy.data.collections[IMPORT_COLLECTION_NAME])
 
+		if self.export_object_children:
+			self.parent_children_hierarchy()
+		else:
+			self.remove_objects_chilren()
+			
 		if self.export_mode == 'APPEND':
 			self.make_imported_objects_local()
 			self.remove_source_library()
@@ -642,29 +687,33 @@ class ImportCommand():
 		self.log.info("Create Collection Hierarchy")
 		tip_coll = None
 		for c, p in self.parent_collections.items():
-			c = self.cm.add_element(c)
-			if c.incoming_name not in self.objects_collection_list:
+			nc = self.cm.get_element_by_incoming_name(c)
+			print('c = ', nc.name)
+			if nc.incoming_name not in self.objects_collection_list:
 				continue
 			
 			new_coll = None
 			for i, pp in enumerate(p):
-				pp = self.cm.add_element(pp)
-				if pp.incoming_name not in self.objects_collection_list:
+				npp = self.cm.get_element_by_incoming_name(pp)
+				print('pp = ', npp.name)
+				if npp.incoming_name not in self.objects_collection_list:
 					continue
 				
-				if i == 0:
-					tip_coll = self.cm.create_collection(c.name)
+				if i == 0 and nc.name not in bpy.data.collections:
+					tip_coll = self.cm.create_collection(c)
+				else:
+					tip_coll = nc
 
-				if pp.incoming_name == self.root_collection_name:
+				if npp.incoming_name == self.root_collection_name:
 					self.cm.link_collection_to_collection(tip_coll, self.root_collection)
 				else:
-					if pp.name not in bpy.data.collections:
-						new_coll = self.cm.create_collection(pp.name)
+					if npp.name not in bpy.data.collections:
+						new_coll = self.cm.create_collection(pp)
 
 					if new_coll is None:
-						new_coll = pp
+						new_coll = npp
 						
-					if c.name not in new_coll.children:
+					if nc.name not in new_coll.children:
 						self.cm.link_collection_to_collection(tip_coll, new_coll)
 		
 		# Link Object to collections
@@ -683,6 +732,7 @@ class ImportCommand():
 							self.cm.link_collection_to_collection(c, parent)
 					self.cm.link_object_to_collection(self.imported_objects[o], c)
 			self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
+	
 	
 	def link_dependencies_in_dedicated_collection(self):
 		if self.have_dependencies:
@@ -716,23 +766,22 @@ class ImportCommand():
 					for hh in h:
 						hierarchy = list(reversed(hh))
 						for i, c in enumerate(hierarchy):
-							c = self.cm.add_element(c)
+							c = self.cm.get_element_by_incoming_name(c)
 							if i == 0:
 								if c.name not in bpy.data.collections:
 									self.cm.create_collection(c.name)
 									self.cm.link_collection_to_collection(c, self.root_collection)
-
-								if c.name not in self.root_collection.children:
+								elif c.name not in self.root_collection.children:
 									self.cm.link_collection_to_collection(c, self.root_collection)
 							else:
 								if c.name not in bpy.data.collections:
 									self.cm.create_collection(c.name)
 		 
-								parent_coll = self.cm.add_element(hierarchy[i-1])
+								parent_coll = self.cm.get_element_by_incoming_name(hierarchy[i-1])
 								if c.name not in parent_coll.children:
 									self.cm.link_collection_to_collection(c, parent_coll)
 						else:
-							parent_coll = self.cm.add_element(hierarchy[len(hierarchy)-1])
+							parent_coll = self.cm.get_element_by_incoming_name(hierarchy[len(hierarchy)-1])
 							self.cm.link_object_to_collection(self.imported_objects[o], parent_coll)
 
 					self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
@@ -747,7 +796,7 @@ class ImportCommand():
 
 			for c in children:
 				if c not in self.source_object_list:
-					c = self.om.get_element_by_incoming_name(c)
+					# c = self.om.get_element_by_incoming_name(c)
 					if c.name in bpy.data.objects:
 						self.log.info(f'Remove object children : "{c.name}"')
 						bpy.data.objects.remove(bpy.data.objects[c.name])
@@ -771,7 +820,7 @@ class ImportCommand():
 		def library_link_all(data_blocks, libpath, collection):
 			for x in data_blocks:
 				if x.library is not None:
-					if os.path.normpath(libpath) == os.path.normpath(x.library.filepath):
+					if self.conform_path(libpath) == self.conform_path(x.library.filepath):
 						if x.name in self.imported_childs:
 							self.log.info(f"Importing child : {x.name}")
 						else:
@@ -801,25 +850,24 @@ class ImportCommand():
 			load_loop(data_from, data_to, object_names)
 				
 		library_link_all(bpy.data.objects, blend_file, collection)
+
+		if self.export_object_children:
+			self.ordered_children = self.reorder_list_child_first(list(self.imported_objects.values()), include_parent=True)
+			self.log.info(f'ordered_children = {self.ordered_children}')
   
 	def make_imported_objects_local(self):
 		self.log.info(f'Make all imported objects local')
-		for o in self.imported_objects.values():
+		for o in self.ordered_children:
 			self.log.info(f'Make local : {o.name}')
-			# name = o.name
-			self.om.add_element(o)
+			obj = self.om.add_element(o, register_correspondance=True)
 			o.make_local()
-			# self.om.update_element_name(o, name)
 			if o.data is None:
 				continue
 			
 			o.data.make_local()
-		
-		if self.export_object_children:
-			self.parent_children_hierarchy()
-		else:
-			self.remove_objects_chilren()
-		
+
+			self.om.update_element_name(o, o.name)
+			obj.name = o.name
 
 	# Traverse Tree and parent lookup from brockmann: https://blender.stackexchange.com/a/172581
 	def traverse_tree(self, t):
@@ -870,9 +918,9 @@ class ImportCommand():
 
 	def remove_source_library(self):
 		if len(self.previous_library_objects) or len(self.previous_library_collections) or len(self.previous_library_scenes):
-			objects = [o for o in bpy.data.objects if o.library is not None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file) and o not in self.previous_library_objects.values()]
-			collections = [c for c in bpy.data.collections if c.library is not None and os.path.normpath(c.library.filepath) == os.path.normpath(self.source_file) and c not in self.previous_library_collections.values()]
-			scenes = [s for s in bpy.data.scenes if s.library is not None and os.path.normpath(s.library.filepath) == os.path.normpath(self.source_file) and s not in self.previous_library_scenes.values()]
+			objects = [o for o in bpy.data.objects if o.library is not None and self.conform_path(o.library.filepath) == self.conform_path(self.source_file) and o not in self.previous_library_objects.values()]
+			collections = [c for c in bpy.data.collections if c.library is not None and self.conform_path(c.library.filepath) == self.conform_path(self.source_file) and c not in self.previous_library_collections.values()]
+			scenes = [s for s in bpy.data.scenes if s.library is not None and self.conform_path(s.library.filepath) == os.path.normpath(self.source_file) and s not in self.previous_library_scenes.values()]
 
 			for o in objects :
 				bpy.data.objects.remove(o)
@@ -889,14 +937,41 @@ class ImportCommand():
 					bpy.data.libraries.remove(l)
 
 	def parent_children_hierarchy(self):
-		print(self.objects_children)
 		for o, c in self.objects_children.items():
-			p = self.om.get_element_by_incoming_name(o)
-			print('parent = ', p.name, o)
+			p = self.om.add_element(bpy.data.objects[o])
 			for h in c:
-				cc = self.om.get_element_by_incoming_name(h)
-				print('child = ', cc.name, h)
-				self.om.parent(p, cc, keep_transform = True)
+				cc = self.om.add_element(bpy.data.objects[h])
+				self.om.parent(p, cc, keep_transform=True)
+
+	def reorder_list_child_first(self, object_list, include_parent=False):
+		object_list = object_list.copy()
+		ordered_list = []
+		def insert_in_list(o, index):
+			if o not in ordered_list:
+				ordered_list.insert(index, o)
+
+		while len(object_list):
+			o = object_list.pop(0)
+			if not len(o.children):
+				insert_in_list(o, 0)
+			else:
+				if o.parent is None:
+					insert_in_list(o, len(ordered_list))
+				else:
+					if o.parent in ordered_list:
+						insert_in_list(o, ordered_list.index(o.parent)-1)
+					else:
+						if include_parent:
+							object_list.insert(0, o.parent)
+						insert_in_list(o, 0)
+					if len(o.children):
+						for c in o.children:
+							if c in ordered_list:
+								insert_in_list(o, ordered_list.index(c)+1)
+							else:
+								insert_in_list(o, 0)
+								insert_in_list(c, 0)
+		return ordered_list
 
 
 def unique_name_clean_func(name):
