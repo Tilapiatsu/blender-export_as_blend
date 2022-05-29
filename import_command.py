@@ -297,11 +297,6 @@ class Element:
 		print(f'Setting local name from "{self._string["local"]}" to "{value}"')
 		self._string['local'] = value
 
-	# def fix_local_element_name(self):
-	# 	if self.incoming_name in self.manager.bpy_data:
-	# 		if self.manager.bpy_data[self.incoming_name] in self.manager.element_correspondance.keys():
-	# 			self._string['local'] = self.manager.element_correspondance[self.manager.bpy_data[self.incoming_name]]
-
 
 class Collection(Element):
 	def __init__(self, manager, string, print_message=False):
@@ -353,6 +348,52 @@ class Object(Element):
 		else:
 			return self._object
 
+
+class ObjectDependencies():
+	compatible_modifier_type = (bpy.types.Object,)
+	def __init__(self, obj, print_message=False):
+		self.log = Logger(addon_name='Object Dependencies', print=print_message)
+		self.object = obj
+		self._dependencies = None
+
+	@property
+	def data_type(self):
+		return {'modifiers': self.object.modifiers}
+
+	@property
+	def dependencies(self):
+		if self._dependencies is None:
+			self._dependencies = {'modifiers':{}}
+			for m in self.object.modifiers:
+				for p in dir(m):
+					a = getattr(m,p)
+					if isinstance(a, self.compatible_modifier_type):
+						if m.name not in self._dependencies['modifiers'].keys():
+							self._dependencies['modifiers'][m.name] = {p:a.name}
+						else:
+							self._dependencies['modifiers'][m.name][p] = a.name
+
+		return self._dependencies
+
+	@dependencies.setter
+	def depenencies(self, value):
+		self._dependencies = value
+
+	def resolve_dependencies(self, object_manager):
+		# for e in object_manager.element_list:
+		# 	print(e.incoming_name)
+		for t in self.dependencies.keys():
+			for n in self.dependencies[t].keys():
+				tt = self.data_type[t]
+				print(tt)
+				m = self.data_type[t][n]
+				if m is None:
+					continue
+				for p in self.dependencies[t][n].keys():
+					obj = object_manager.get_element_by_incoming_name(self.dependencies[t][n][p]).object
+					self.log.info(f'Resolving dependencies, setting attr of {m.name}.{p} to {obj.name} ')
+					setattr(m, p, object_manager.get_element_by_incoming_name(self.dependencies[t][n][p]).object)
+				
 
 class ImportCommand():
 	def __init__(self, argv):
@@ -546,6 +587,10 @@ class ImportCommand():
 
 		self.imported_childs = []
 
+		self.object_dependencies = {}
+		for o in objects.values():
+			self.object_dependencies[o.name] = ObjectDependencies(o).dependencies
+
 		# remove objects and collections
 		self.remove_source_library()
 		
@@ -573,7 +618,8 @@ class ImportCommand():
 		self.log.info(f'objects_collection_list = {self.objects_collection_list}')
 		self.log.info(f'objects_collection_hierarchy = {self.objects_collection_hierarchy}')
 		self.log.info(f'all_objects_collection_hierarchy = {self.all_objects_collection_hierarchy}')
-		self.log.info(f'objects_childen = {self.objects_children}')
+		self.log.info(f'objects_children = {self.objects_children}')
+		self.log.info(f'object_dependencies = {self.object_dependencies}')
 
 	def import_command(self):
 		if self.export_to_clean_file and self.file_override == "OVERRIDE":
@@ -667,6 +713,7 @@ class ImportCommand():
 			
 		if self.export_mode == 'APPEND':
 			self.make_imported_objects_local()
+			self.resolve_dependencies()
 			self.remove_source_library()
 
 	# Main Flow Methods
@@ -688,14 +735,12 @@ class ImportCommand():
 		tip_coll = None
 		for c, p in self.parent_collections.items():
 			nc = self.cm.get_element_by_incoming_name(c)
-			print('c = ', nc.name)
 			if nc.incoming_name not in self.objects_collection_list:
 				continue
 			
 			new_coll = None
 			for i, pp in enumerate(p):
 				npp = self.cm.get_element_by_incoming_name(pp)
-				print('pp = ', npp.name)
 				if npp.incoming_name not in self.objects_collection_list:
 					continue
 				
@@ -868,6 +913,14 @@ class ImportCommand():
 
 			self.om.update_element_name(o, o.name)
 			obj.name = o.name
+
+	def resolve_dependencies(self):
+		self.log.info(f'Resolve objects dependencies')
+		for o in self.om.element_list:
+			dependency = ObjectDependencies(o.object, True)
+			dependency.depenencies = self.object_dependencies[o.incoming_name]
+			dependency.resolve_dependencies(self.om)
+
 
 	# Traverse Tree and parent lookup from brockmann: https://blender.stackexchange.com/a/172581
 	def traverse_tree(self, t):
