@@ -68,42 +68,17 @@ class Manager:
 		
 		return None
 
-
 	def get_element_by_local_name(self, name):
 		e = [elem for elem in self.element_list if elem.name == name]
 		if len(e):
 			return e[0]
 		
 		return None
-
-	def conform_element(self, element):
-		if isinstance(element, self.element_class):
-			return element
-		elif isinstance(element, self.bpy_type):
-			return self.element_class(manager=self, string=element.name, print_message=self.print_message)
-		elif isinstance(element, str):
-			return self.element_class(manager=self, string=element, print_message=self.print_message)
-		else:
-			try:
-				ex = ValueError()
-				ex.strerror = f"Unrecognise type for Collection {type(element)}"
-				raise ex
-			except ValueError as e:
-				self.log.error(f'Value Error : {e.strerror}')
-
-	def get_element(self, name):
-		valid_elements = {e: n for e, n in self.element_correspondance.items() if not isinstance(e, int)}
-		for e,n in valid_elements.items():
-			if n == name and not isinstance(e, int):
-				self.log.info(f'Element found : {e}')
-				return self.conform_element(e)
-
-		return self.add_element(name, register=True)
 	
 	def update_element_name(self, elem, name):
 		if elem in self.element_correspondance.keys():
+			self.log.info(f'Updating element "{elem.name}" name to "{name}"')
 			self.element_correspondance[elem] = name
-			self.log.info(f'Updating element {elem} name to "{name}"')
 		else:
 			self.register_element_correspondance(elem)
 
@@ -175,8 +150,8 @@ class ObjectManager(Manager):
 	def __init__(self, bpy_data, element_class, print_message=False):
 		super(ObjectManager, self).__init__('Object Manager', bpy_data, element_class, print_message)
 
-	def add_element(self, obj, register_correspondance=False, append_to_list=True):
-		if register_correspondance:
+	def add_element(self, obj, register=False, append_to_list=True):
+		if register:
 			self.register_element_correspondance(obj)
 
 		elem = self.element_class(manager=self, obj=obj, print_message=self.print_message)
@@ -192,6 +167,29 @@ class ObjectManager(Manager):
 		if keep_transform:
 			child.object.matrix_parent_inverse = parent.object.matrix_world.inverted()
 
+	def conform_element(self, element):
+		if isinstance(element, self.element_class):
+			return element
+		elif isinstance(element, self.bpy_type):
+			return self.element_class(manager=self, obj=element, print_message=self.print_message)
+		elif isinstance(element, str):
+			return self.element_class(manager=self, obj=self.bpy.data[element.name], print_message=self.print_message)
+		else:
+			try:
+				ex = ValueError()
+				ex.strerror = f"Unrecognise type for Collection {type(element)}"
+				raise ex
+			except ValueError as e:
+				self.log.error(f'Value Error : {e.strerror}')
+
+	def get_element(self, name):
+		valid_elements = {e: n for e, n in self.element_correspondance.items() if not isinstance(e, int)}
+		for e, n in valid_elements.items():
+			if n == name and not isinstance(e, int):
+				self.log.info(f'Element found : {e}')
+				return self.conform_element(e)
+
+		return self.add_element(self.bpy_data[name], register=True)
 
 class CollectionManager(Manager):
 	def __init__(self, bpy_data, element_class, print_message=False):
@@ -219,6 +217,30 @@ class CollectionManager(Manager):
 				self.element_list.append(elem)
 		return elem
 
+	def conform_element(self, element):
+		if isinstance(element, self.element_class):
+			return element
+		elif isinstance(element, self.bpy_type):
+			return self.element_class(manager=self, string=element.name, print_message=self.print_message)
+		elif isinstance(element, str):
+			return self.element_class(manager=self, string=element, print_message=self.print_message)
+		else:
+			try:
+				ex = ValueError()
+				ex.strerror = f"Unrecognise type for Collection {type(element)}"
+				raise ex
+			except ValueError as e:
+				self.log.error(f'Value Error : {e.strerror}')
+
+	def get_element(self, name):
+		valid_elements = {e: n for e, n in self.element_correspondance.items() if not isinstance(e, int)}
+		for e,n in valid_elements.items():
+			if n == name and not isinstance(e, int):
+				self.log.info(f'Element found : {e}')
+				return self.conform_element(e)
+
+		return self.add_element(name, register=True)
+		
 	# Linking and Unlinking Methods
 	def create_collection(self, collection_name):
 		if collection_name not in self.element_correspondance.values():
@@ -343,10 +365,21 @@ class Object(Element):
 				raise ex
 			except ValueError as e:
 				self.log.error(f'Value Error : {e.strerror}')
-		elif self.name in self.manager.bpy_data:
-			return self.manager.bpy_data[self.name]
-		else:
+		elif self._object is not None:
 			return self._object
+
+	@property
+	def name(self):
+		self.fix_local_element_name()
+		return self._string['local']
+
+	@name.setter
+	def name(self, value):
+		self.log.info(f'Setting local name from "{self._string["local"]}" to "{value}"')
+		self._string['local'] = value
+		
+	def fix_local_element_name(self):
+		self._string['local'] = self._object.name
 
 
 class ObjectDependencies():
@@ -355,6 +388,7 @@ class ObjectDependencies():
 		self.log = Logger(addon_name='Object Dependencies', print=print_message)
 		self.object = obj
 		self._dependencies = None
+		self.dependency_objects = []
 
 	@property
 	def data_type(self):
@@ -372,6 +406,9 @@ class ObjectDependencies():
 							self._dependencies['modifiers'][m.name] = {p:a.name}
 						else:
 							self._dependencies['modifiers'][m.name][p] = a.name
+						
+						if a.name not in self.dependency_objects:
+							self.dependency_objects.append(a.name)
 
 		return self._dependencies
 
@@ -380,18 +417,16 @@ class ObjectDependencies():
 		self._dependencies = value
 
 	def resolve_dependencies(self, object_manager):
-		# for e in object_manager.element_list:
-		# 	print(e.incoming_name)
 		for t in self.dependencies.keys():
 			for n in self.dependencies[t].keys():
 				tt = self.data_type[t]
-				print(tt)
 				m = self.data_type[t][n]
 				if m is None:
 					continue
 				for p in self.dependencies[t][n].keys():
-					obj = object_manager.get_element_by_incoming_name(self.dependencies[t][n][p]).object
-					self.log.info(f'Resolving dependencies, setting attr of {m.name}.{p} to {obj.name} ')
+					obj = object_manager.get_element_by_incoming_name(self.dependencies[t][n][p])
+					obj2 = object_manager.get_element(self.dependencies[t][n][p])
+					self.log.info(f'Resolving dependencies, setting attr of {m.name}.{p} to {obj.name} {obj2.name}')
 					setattr(m, p, object_manager.get_element_by_incoming_name(self.dependencies[t][n][p]).object)
 				
 
@@ -412,10 +447,6 @@ class ImportCommand():
 			if os.path.exists(self.source_file) :
 				self._imported_objects = {o.name:o for o in bpy.data.objects if o.library != None and self.conform_path(o.library.filepath) == self.conform_path(self.source_file)}
 		return self._imported_objects
-
-	# @property
-	# def have_dependencies(self):
-	# 	return len(self.source_object_list) < len(bpy.context.scene.objects) - self.initial_count
 
 	def conform_path(self, path):
 		return os.path.normpath(bpy.path.abspath(path))
@@ -532,7 +563,8 @@ class ImportCommand():
 		scenes = {	s.name:s for s in bpy.data.scenes if
 					s.library is not None and
 					self.conform_path(s.library.filepath) == self.conform_path(self.source_file)}
-		
+
+		# register object children
 		self.objects_children = {}
 		object_to_process = self.source_object_list.copy()
 
@@ -552,7 +584,20 @@ class ImportCommand():
 						o = bpy.data.objects[cc]
 						if o.library is not None and os.path.normpath(o.library.filepath) == os.path.normpath(self.source_file):
 							objects[cc] = o
+		
+		# register object depencencies
+		self.object_dependencies = {}
+		self.dependency_object_list = []
+		for o in objects.values():
+			dep = ObjectDependencies(o)
+			self.object_dependencies[o.name] = dep.dependencies
+			self.dependency_object_list += dep.dependency_objects
 
+		for o in self.dependency_object_list:
+			if o not in self.source_object_list:
+				self.source_object_list.append(o)
+
+		# register parent collections
 		self.parent_collections = self.parent_lookup(scenes[self.source_scene_name].collection)
 
 		self.selected_objects_parent_collection = {}
@@ -563,17 +608,23 @@ class ImportCommand():
 			for c in self.objects_children[o]:
 				self.selected_objects_parent_collection[c] = [cc.name for cc in objects[c].users_collection]
 		
+		# register root collection name
 		self.root_collection_name = scenes[self.source_scene_name].collection.name
 
+		# register collections in scene
 		self.collections_in_scene = [c.name for c in collections.values() if scenes[self.source_scene_name].user_of_id(c)]
+
+		# register object_collection_hierarchy
 		self.objects_collection_hierarchy = self.get_objects_collection_hierarchy([o for o in objects.values() if o.name in self.source_object_list], self.collections_in_scene, collections.values())
 
+		# register objects collection list
 		self.objects_collection_list = [scenes[self.source_scene_name].collection.name]
 		for c in self.objects_collection_hierarchy.values():
 			for cc in c:
 				if cc not in self.objects_collection_list:
 					self.objects_collection_list.append(cc)
 
+		# register all objects collection hierarchy
 		self.all_objects_collection_hierarchy = {}
 		for o in objects.values():
 			hierarchies = []
@@ -587,13 +638,10 @@ class ImportCommand():
 
 		self.imported_childs = []
 
-		self.object_dependencies = {}
-		for o in objects.values():
-			self.object_dependencies[o.name] = ObjectDependencies(o).dependencies
-
 		# remove objects and collections
 		self.remove_source_library()
 		
+		# log all registered parameters
 		self.log.info(f'source_file = {self.source_file}')
 		self.log.info(f'destination_file = {self.destination_file}')
 		self.log.info(f'source_data = {self.source_data}')
@@ -620,6 +668,7 @@ class ImportCommand():
 		self.log.info(f'all_objects_collection_hierarchy = {self.all_objects_collection_hierarchy}')
 		self.log.info(f'objects_children = {self.objects_children}')
 		self.log.info(f'object_dependencies = {self.object_dependencies}')
+		self.log.info(f'dependency_object_list = {self.dependency_object_list}')
 
 	def import_command(self):
 		if self.export_to_clean_file and self.file_override == "OVERRIDE":
@@ -904,23 +953,27 @@ class ImportCommand():
 		self.log.info(f'Make all imported objects local')
 		for o in self.ordered_children:
 			self.log.info(f'Make local : {o.name}')
-			obj = self.om.add_element(o, register_correspondance=True)
+			obj = self.om.add_element(o, register=True)
 			o.make_local()
 			if o.data is None:
 				continue
 			
 			o.data.make_local()
 
+			layer = bpy.context.view_layer
+			layer.update()
+
 			self.om.update_element_name(o, o.name)
 			obj.name = o.name
 
 	def resolve_dependencies(self):
 		self.log.info(f'Resolve objects dependencies')
+		for e in self.om.element_list:
+			print(e.incoming_name, e.name, e.object.name)
 		for o in self.om.element_list:
 			dependency = ObjectDependencies(o.object, True)
 			dependency.depenencies = self.object_dependencies[o.incoming_name]
 			dependency.resolve_dependencies(self.om)
-
 
 	# Traverse Tree and parent lookup from brockmann: https://blender.stackexchange.com/a/172581
 	def traverse_tree(self, t):
