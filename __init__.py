@@ -35,7 +35,6 @@ def _label_multiline(context, text, parent):
 
 
 def filepath_set(self, value):
-	print(value)
 	if path.exists(value) and path.isfile(value) and path.splitext(value)[1].lower() == '.blend':
 		target_scene_items_update(self, value)
 	bpy.context.window_manager.eab_filepath = value
