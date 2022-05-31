@@ -35,9 +35,10 @@ def _label_multiline(context, text, parent):
 
 
 def filepath_set(self, value):
+	print(value)
 	if path.exists(value) and path.isfile(value) and path.splitext(value)[1].lower() == '.blend':
 		target_scene_items_update(self, value)
-
+	bpy.context.window_manager.eab_filepath = value
 
 def target_scene_items_update(self, value):
 	wm = bpy.context.window_manager
@@ -51,7 +52,6 @@ def target_scene_items_update(self, value):
 			target_scene_items.append((s, s, ''))
 			
 	wm.eab_target_scene_items = str(target_scene_items)
-	wm.eab_filepath = value
 
 
 def target_scene_items_list(self, context):
@@ -254,6 +254,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 
 	def execute(self, context):
 		filepath = context.window_manager.eab_filepath
+		print(filepath)
 		ext = path.splitext(filepath)[1].lower()
 		if ext != '.blend':
 			filepath += '.blend'
@@ -274,6 +275,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			self.file_override == 'OVERRIDE'
 
 		if os.path.normpath(filepath) == os.path.normpath(self.current_file):
+			print(os.path.normpath(filepath), os.path.normpath(self.current_file))
 			self.report({'ERROR'}, "Destination file have to be different then source file")
 			return {'CANCELLED'}
 

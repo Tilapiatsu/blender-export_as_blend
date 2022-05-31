@@ -757,8 +757,8 @@ class ImportCommand():
 
 		if self.export_object_children:
 			self.parent_children_hierarchy()
-		else:
-			self.remove_objects_chilren()
+		# else:
+		# 	self.remove_objects_chilren()
 			
 		if self.export_mode == 'APPEND':
 			self.make_imported_objects_local()
@@ -890,8 +890,8 @@ class ImportCommand():
 
 			for c in children:
 				if c not in self.source_object_list:
-					# c = self.om.get_element_by_incoming_name(c)
-					if c.name in bpy.data.objects:
+					c = self.om.add_element(bpy.data.objects[c])
+					if c in bpy.data.objects:
 						self.log.info(f'Remove object children : "{c.name}"')
 						bpy.data.objects.remove(bpy.data.objects[c.name])
 	
@@ -951,7 +951,12 @@ class ImportCommand():
   
 	def make_imported_objects_local(self):
 		self.log.info(f'Make all imported objects local')
-		for o in self.ordered_children:
+		if self.export_object_children:
+			object_list = self.ordered_children
+		else:
+			object_list = [bpy.data.objects[o] for o in self.imported_objects]
+
+		for o in object_list:
 			self.log.info(f'Make local : {o.name}')
 			obj = self.om.add_element(o, register=True)
 			o.make_local()
