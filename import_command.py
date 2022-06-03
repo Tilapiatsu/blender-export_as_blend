@@ -440,13 +440,13 @@ class ImportCommand():
 		self.cm = CollectionManager(bpy.data.collections, Collection, self.print_debug)
 		self.om = ObjectManager(bpy.data.objects, Object, self.print_debug)
 
-	# Properties
-	@property
-	def imported_objects(self):
-		if self._imported_objects is None:
-			if os.path.exists(self.source_file) :
-				self._imported_objects = {o.name:o for o in bpy.data.objects if o.library != None and self.conform_path(o.library.filepath) == self.conform_path(self.source_file)}
-		return self._imported_objects
+	# # Properties
+	# @property
+	# def imported_objects(self):
+	# 	if self._imported_objects is None:
+	# 		if os.path.exists(self.source_file) :
+	# 			self._imported_objects = {o.name:o for o in bpy.data.objects if o.library != None and self.conform_path(o.library.filepath) == self.conform_path(self.source_file)}
+	# 	return self._imported_objects
 
 	def conform_path(self, path):
 		return os.path.normpath(bpy.path.abspath(path))
@@ -509,6 +509,16 @@ class ImportCommand():
 					  		help='If enabled, the dependencies of each objects will be placed in a "Dependencies" collection, otherwise they will be placed in ther respective collection if --create_collection_hierarchy is True or in root collection if False',
 							required=True)
 		
+		name_collision_group = parser.add_argument_group('Name Collsion')
+		name_collision_group.add_argument('-i', '--imported_names', nargs='+',
+                                    help='Each object matching "imported_names" names will be renamed to "new_name" after import, both list need to have the same length',
+                                    required=False)
+		name_collision_group.add_argument('-x', '--new_names', nargs='+',
+                                    help='Each object matching "imported_names" names will be renamed to "new_name" after import, both list need to have the same length',
+                                   required=False)
+
+								   
+
 		debug_group = parser.add_argument_group('Collection Hierarchy')
 		debug_group.add_argument('-P', '--print_debug', default=False,
 										  help='Print debug message in console',
@@ -529,6 +539,22 @@ class ImportCommand():
 		self.export_in_new_collection = eval(args.export_in_new_collection)
 		self.new_collection_name = args.new_collection_name
 		self.dependencies_in_dedicated_collection = eval(args.dependencies_in_dedicated_collection)
+
+		imported_names = args.imported_names
+		new_names = args.new_names
+
+		if imported_names is None or new_names is None:
+			self.name_correspondance = {}
+		else:
+			if len(imported_names) != len(new_names):
+				self.log.error('imported_names and new_names need to have the same length')
+				self.log.error(f'new_names = {new_names}')
+				self.log.error(f'imported_names = {imported_names}')
+				sys.exit()
+			else:
+				self.name_correspondance = {imported_names[i]: new_names[i] for i in range(len(imported_names))}
+		
+
 		self.print_debug = eval(args.print_debug)
 	
 	def init_source_lists(self):
@@ -669,6 +695,7 @@ class ImportCommand():
 		self.log.info(f'objects_children = {self.objects_children}')
 		self.log.info(f'object_dependencies = {self.object_dependencies}')
 		self.log.info(f'dependency_object_list = {self.dependency_object_list}')
+		self.log.info(f'name_correspondance = {self.name_correspondance}')
 
 	def import_command(self):
 		if self.export_to_clean_file and self.file_override == "OVERRIDE":
@@ -727,7 +754,7 @@ class ImportCommand():
 		self.cm.set_collection_active(IMPORT_COLLECTION_NAME)
 
 		# Link object from source file
-		self.link_objects(self.source_file, self.source_object_list, bpy.data.collections[IMPORT_COLLECTION_NAME])
+		self.link_objects(self.source_file, self.source_object_list, bpy.data.collections[IMPORT_COLLECTION_NAME], self.export_mode == 'LINK')
 
 		self.have_dependencies = len(bpy.data.collections[IMPORT_COLLECTION_NAME].objects) > len(self.source_object_list)
 
@@ -761,9 +788,11 @@ class ImportCommand():
 		# 	self.remove_objects_chilren()
 			
 		if self.export_mode == 'APPEND':
-			self.make_imported_objects_local()
-			self.resolve_dependencies()
-			self.remove_source_library()
+			for imported_name, new_name in self.name_correspondance.items():
+				bpy.data.objects[imported_name] = new_name
+			# self.make_imported_objects_local()
+			# self.resolve_dependencies()
+			# self.remove_source_library()
 
 	# Main Flow Methods
 	def create_and_link_to_new_collection(self):
@@ -824,6 +853,8 @@ class ImportCommand():
 							if parent.name not in bpy.data.collections:
 								self.cm.create_collection(parent.name)
 							self.cm.link_collection_to_collection(c, parent)
+					print(o)
+					print(self.imported_objects)
 					self.cm.link_object_to_collection(self.imported_objects[o], c)
 			self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
 	
@@ -909,17 +940,27 @@ class ImportCommand():
 								continue
 						p.remove(e)
 
-	def link_objects(self, blend_file, object_names, collection):
+	def link_objects(self, blend_file, object_names, collection, is_link):
 		self.log.info(f'Linking objects from source file {blend_file} to Collection {collection}')
+		imported_objects = []
 		def library_link_all(data_blocks, libpath, collection):
 			for x in data_blocks:
-				if x.library is not None:
-					if self.conform_path(libpath) == self.conform_path(x.library.filepath):
-						if x.name in self.imported_childs:
-							self.log.info(f"Importing child : {x.name}")
-						else:
-							self.log.info(f"Importing : {x.name}")
-						collection.objects.link(x)
+				if x.name not in imported_objects:
+					continue
+
+				if self.export_mode == 'LINK':
+					if x.library is not None:
+						if self.conform_path(libpath) == self.conform_path(x.library.filepath):
+							link_to_collection(x, collection)
+				else:
+					link_to_collection(x, collection)
+						
+		def link_to_collection(object, collection):
+			if object.name in self.imported_childs:
+				self.log.info(f"Importing child : {object.name}")
+			else:
+				self.log.info(f"Importing : {object.name}")
+			collection.objects.link(object)
 		
 		def load_loop(data_from, data_to, object_to_include):
 			object_to_include = object_to_include.copy()
@@ -927,28 +968,36 @@ class ImportCommand():
 				# Import objects
 				if name in object_to_include:
 					data_to.objects.append(name)
-				
+					imported_objects.append(name)
+
 				if self.export_object_children:
 					if name not in self.objects_children.keys():
 						continue
 					
 					children =  self.objects_children[name]
 					if len(children):
-
 						for c in children:
-							self.imported_childs.append(c)
-							data_to.objects.append(c)
+							if c not in self.imported_childs:
+								self.imported_childs.append(c)
+							if c not in data_to.objects:
+								data_to.objects.append(c)
+							if c not in imported_objects:
+								imported_objects.append(c)
 
 		# Link objects
-		with bpy.data.libraries.load(blend_file, link=True) as (data_from, data_to):
+		with bpy.data.libraries.load(blend_file, link=is_link) as (data_from, data_to):
 			load_loop(data_from, data_to, object_names)
-				
+
+		self.imported_objects = {o.name:o for o in bpy.data.objects if o.name in imported_objects}
+		print(self.imported_objects)
+		print('load_loop_done')
 		library_link_all(bpy.data.objects, blend_file, collection)
 
 		if self.export_object_children:
 			self.ordered_children = self.reorder_list_child_first(list(self.imported_objects.values()), include_parent=True)
 			self.log.info(f'ordered_children = {self.ordered_children}')
-  
+	
+
 	def make_imported_objects_local(self):
 		self.log.info(f'Make all imported objects local')
 		if self.export_object_children:

@@ -7,6 +7,7 @@ import shutil
 import os
 import stat
 import sys
+import uuid
 from os import path
 
 # TODO : Need to fix collection that loose dependencies after export
@@ -156,6 +157,10 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 	#                                          	default=False)
 	filename_ext = '.blend'
 	
+	@property
+	def uuid(self):
+		return uuid.uuid1().hex
+
 	def draw(self, context):
 		layout = self.layout
 		col = layout.column()
@@ -257,29 +262,37 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		ext = path.splitext(filepath)[1].lower()
 		if ext != '.blend':
 			filepath += '.blend'
+		
+		self.selected_objects = [o.name for o in bpy.context.selected_objects]
+		self.name_collisions = None
+
+		if not path.exists(filepath):
+			self.file_override == 'OVERRIDE'
+		elif self.file_override == 'APPEND_LINK':
+			# get name collisions
+			self.name_collisions = self.get_name_collisions_from_file(filepath, [o for o in self.selected_objects])
+
+			# Rename objects if collision found
+			for n,uuid in self.name_collisions.items():
+				bpy.data.objects[n].name = uuid
+
+			self.selected_objects = [o.name for o in bpy.context.selected_objects]
 
 		# Save to a temp folder if currnt file is dirty. Otherwise some objects will not be visible from the target file.
 		if bpy.data.is_dirty:		
-			self.tmpdir = tempfile.mkdtemp()
-			self.current_file = path.join(
-				self.tmpdir, path.basename(filepath))
-			bpy.ops.wm.save_as_mainfile(
-				'EXEC_DEFAULT', filepath=self.current_file, copy=True)
+			self.tmpdir, self.current_file = self.save_copy_as_temp_file(
+				path.basename(filepath))
 			saved_to_temp_folder = True
 		else:
 			self.current_file = bpy.data.filepath
 			saved_to_temp_folder = False
 
-		if not path.exists(filepath):
-			self.file_override == 'OVERRIDE'
-
+		# Cancel if current file == destination file
 		if os.path.normpath(filepath) == os.path.normpath(self.current_file):
 			print(os.path.normpath(filepath), os.path.normpath(self.current_file))
 			self.report({'ERROR'}, "Destination file have to be different then source file")
 			return {'CANCELLED'}
 
-
-		self.selected_objects = [o.name for o in bpy.context.selected_objects]
 
 		import_parameters = [	'--source_file', self.current_file,
 								'--destination_file', filepath,
@@ -299,12 +312,17 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 								'--print_debug', str(self.print_debug)
 							]
 
+		if self.name_collisions is not None:
+			import_parameters += [	'--imported_names', *self.name_collisions.values(),
+									'--new_names', *self.name_collisions.keys()]
+
 		if self.file_override == 'OVERRIDE':
 			subprocess.check_call([bpy.app.binary_path,
 						'--background',
 						'--factory-startup',
 						'--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--'] + import_parameters)
 		elif self.file_override == 'APPEND_LINK':
+
 			subprocess.check_call([bpy.app.binary_path,
 						'--background',
 						filepath,
@@ -333,6 +351,25 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			delete_folder_if_exist(self.tmpdir)
 
 		return {'FINISHED'}
+
+	def save_copy_as_temp_file(self, file_name):
+		tmpdir = tempfile.mkdtemp()
+		filepath = path.join(
+					tmpdir, file_name)
+		bpy.ops.wm.save_as_mainfile(
+				'EXEC_DEFAULT', filepath=filepath, copy=True)
+		
+		return tmpdir, filepath
+
+	def get_name_collisions_from_file(self, filepath, local_names):
+		name_collision = {}
+		with bpy.data.libraries.load(filepath, link=False) as (data_from, _):
+			for name in data_from.objects:
+				if name in local_names:
+					name_collision[name] = self.uuid
+		
+		return name_collision
+
 
 
 def delete_folder_if_exist(p):
