@@ -25,14 +25,6 @@ class ImportCommand():
 		self.cm = CollectionManager(bpy.data.collections, Collection, self.print_debug)
 		self.om = ObjectManager(bpy.data.objects, Object, self.print_debug)
 
-	# # Properties
-	# @property
-	# def imported_objects(self):
-	# 	if self._imported_objects is None:
-	# 		if os.path.exists(self.source_file) :
-	# 			self._imported_objects = {o.name:o for o in bpy.data.objects if o.library != None and self.conform_path(o.library.filepath) == self.conform_path(self.source_file)}
-	# 	return self._imported_objects
-
 	def conform_path(self, path):
 		return os.path.normpath(bpy.path.abspath(path))
 		
@@ -376,9 +368,6 @@ class ImportCommand():
 				new_name = self.om.get_next_valid_name(new_name)
 				self.log.info(f'Renaming object "{imported_name}" to "{new_name}"')
 				bpy.data.objects[imported_name].name = new_name
-			# self.make_imported_objects_local()
-			# self.resolve_dependencies()
-			# self.remove_source_library()
 
 	# Main Flow Methods
 	def create_and_link_to_new_collection(self):
