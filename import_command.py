@@ -511,11 +511,11 @@ class ImportCommand():
 		
 		name_collision_group = parser.add_argument_group('Name Collsion')
 		name_collision_group.add_argument('-i', '--imported_names', nargs='+',
-                                    help='Each object matching "imported_names" names will be renamed to "new_name" after import, both list need to have the same length',
-                                    required=False)
+									help='Each object matching "imported_names" names will be renamed to "new_name" after import, both list need to have the same length',
+									required=False)
 		name_collision_group.add_argument('-x', '--new_names', nargs='+',
-                                    help='Each object matching "imported_names" names will be renamed to "new_name" after import, both list need to have the same length',
-                                   required=False)
+									help='Each object matching "imported_names" names will be renamed to "new_name" after import, both list need to have the same length',
+								   required=False)
 
 								   
 
@@ -789,7 +789,9 @@ class ImportCommand():
 			
 		if self.export_mode == 'APPEND':
 			for imported_name, new_name in self.name_correspondance.items():
-				bpy.data.objects[imported_name] = new_name
+				self.log.info(f'Renaming object "{imported_name}" to "{new_name}"')
+				print(bpy.data.objects[imported_name])
+				bpy.data.objects[imported_name].name = new_name
 			# self.make_imported_objects_local()
 			# self.resolve_dependencies()
 			# self.remove_source_library()
@@ -853,8 +855,6 @@ class ImportCommand():
 							if parent.name not in bpy.data.collections:
 								self.cm.create_collection(parent.name)
 							self.cm.link_collection_to_collection(c, parent)
-					print(o)
-					print(self.imported_objects)
 					self.cm.link_object_to_collection(self.imported_objects[o], c)
 			self.cm.unlink_object_from_collection(self.imported_objects[o], self.root_collection)
 	
@@ -989,8 +989,7 @@ class ImportCommand():
 			load_loop(data_from, data_to, object_names)
 
 		self.imported_objects = {o.name:o for o in bpy.data.objects if o.name in imported_objects}
-		print(self.imported_objects)
-		print('load_loop_done')
+
 		library_link_all(bpy.data.objects, blend_file, collection)
 
 		if self.export_object_children:

@@ -258,7 +258,6 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 
 	def execute(self, context):
 		filepath = context.window_manager.eab_filepath
-		print(filepath)
 		ext = path.splitext(filepath)[1].lower()
 		if ext != '.blend':
 			filepath += '.blend'
@@ -266,33 +265,47 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		self.selected_objects = [o.name for o in bpy.context.selected_objects]
 		self.name_collisions = None
 
-		if not path.exists(filepath):
-			self.file_override == 'OVERRIDE'
-		elif self.file_override == 'APPEND_LINK':
-			# get name collisions
-			self.name_collisions = self.get_name_collisions_from_file(filepath, [o for o in self.selected_objects])
+		# Cancel if current file and destination file are the same
+		if os.path.normpath(filepath) == os.path.normpath(bpy.data.filepath):
+			self.report({'ERROR'}, "Destination file have to be different than source file")
+			return {'CANCELLED'}
 
-			# Rename objects if collision found
-			for n,uuid in self.name_collisions.items():
-				bpy.data.objects[n].name = uuid
-
-			self.selected_objects = [o.name for o in bpy.context.selected_objects]
-
-		# Save to a temp folder if currnt file is dirty. Otherwise some objects will not be visible from the target file.
-		if bpy.data.is_dirty:		
-			self.tmpdir, self.current_file = self.save_copy_as_temp_file(
-				path.basename(filepath))
+		# Save to a temp folder if current file is dirty. Otherwise some objects will not be visible from the target file.
+		if bpy.data.is_dirty:
+			self.tmpdir, self.current_file = self.save_copy_as_temp_file(path.basename(filepath))
 			saved_to_temp_folder = True
 		else:
 			self.current_file = bpy.data.filepath
 			saved_to_temp_folder = False
 
-		# Cancel if current file == destination file
-		if os.path.normpath(filepath) == os.path.normpath(self.current_file):
-			print(os.path.normpath(filepath), os.path.normpath(self.current_file))
-			self.report({'ERROR'}, "Destination file have to be different then source file")
-			return {'CANCELLED'}
+		# Force override if the destination path doesn't exist ( Can't append/link to file that doesn't exists)
+		if not path.exists(filepath):
+			self.file_override == 'OVERRIDE'
+		# If destination path exists and append/link has been set
+		elif self.file_override == 'APPEND_LINK' and self.export_mode == 'APPEND':
+			# get name collisions
+			self.name_collisions = self.get_name_collisions_from_file(filepath, [o for o in self.selected_objects])
 
+			# if any name collision found
+			if len(self.name_collisions.keys()):
+				# Save temporary file if necessary to keep current file untoutched
+				if os.path.normpath(self.current_file) == os.path.normpath(bpy.data.filepath):
+					self.tmpdir, self.current_file = self.save_copy_as_temp_file(path.basename(filepath))
+					saved_to_temp_folder = True
+				
+				# rename objects collision in temporary file
+				rename_parameneters = [	'--original_names', *self.name_collisions.keys(),
+                                    	'--new_names', *self.name_collisions.values()]
+				subprocess.check_call([bpy.app.binary_path,
+                                    '--background',
+                                    self.current_file,
+                                    '--factory-startup',
+                                    '--python', path.join(path.dirname(path.realpath(__file__)), 'rename_objects.py'), '--'] + rename_parameneters)
+
+		# fix selected_objects name if name collision found
+		for i,n in enumerate(self.selected_objects):
+			if n in self.name_collisions.keys():
+				self.selected_objects[i] = self.name_collisions[n]
 
 		import_parameters = [	'--source_file', self.current_file,
 								'--destination_file', filepath,
@@ -322,7 +335,6 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 						'--factory-startup',
 						'--python', path.join(path.dirname(path.realpath(__file__)), 'import_command.py'), '--'] + import_parameters)
 		elif self.file_override == 'APPEND_LINK':
-
 			subprocess.check_call([bpy.app.binary_path,
 						'--background',
 						filepath,
@@ -343,9 +355,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		# 				bpy.data.collections[cc].objects.link(bpy.data.objects[o.name])
 
 		if self.open_exported_blend:
-			subprocess.Popen([bpy.app.binary_path,
-							  filepath
-							  ])
+			subprocess.Popen([bpy.app.binary_path, filepath])
 
 		if saved_to_temp_folder:
 			delete_folder_if_exist(self.tmpdir)
