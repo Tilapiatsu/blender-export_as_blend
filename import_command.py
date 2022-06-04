@@ -541,9 +541,9 @@ class ImportCommand():
 						
 		def link_to_collection(object, collection):
 			if object.name in self.imported_childs:
-				self.log.info(f"Importing child : {object.name}")
+				self.log.info(f'Linking child "{object.name}" to collection "{collection.name}"')
 			else:
-				self.log.info(f"Importing : {object.name}")
+				self.log.info(f'Linking "{object.name}" to collection "{collection.name}"')
 			collection.objects.link(object)
 		
 		def load_loop(data_from, data_to, object_to_include):
@@ -552,6 +552,7 @@ class ImportCommand():
 				# Import objects
 				if name in object_to_include:
 					if name not in data_to.objects:
+						self.log.info(f'Importing : {c}')
 						data_to.objects.append(name)
 					if name not in imported_objects:
 						imported_objects.append(name)
@@ -562,10 +563,10 @@ class ImportCommand():
 					
 					children = self.objects_children[name]
 					for c in children:
-						self.log.info(f'Importing child : {c}')
 						if c not in self.imported_childs:
 							self.imported_childs.append(c)
 						if c not in data_to.objects:
+							self.log.info(f'Importing child : {c}')
 							data_to.objects.append(c)
 						if c not in imported_objects:
 							imported_objects.append(c)
