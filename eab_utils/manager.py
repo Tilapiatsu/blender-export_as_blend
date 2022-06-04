@@ -112,6 +112,8 @@ class Manager:
 
 		return name_new
 
+	def get_next_valid_name(self, name):
+		return self.unique_name(-11, name, self.element_correspondance, clean_func=unique_name_clean_func, register=False)
 
 class ObjectManager(Manager):
 	def __init__(self, bpy_data, element_class, print_message=False):
@@ -161,7 +163,7 @@ class ObjectManager(Manager):
 
 		return self.add_element(self.bpy_data[name], register=True)
 
-
+		
 class CollectionManager(Manager):
 	def __init__(self, bpy_data, element_class, print_message=False):
 		super(CollectionManager, self).__init__(
@@ -179,12 +181,12 @@ class CollectionManager(Manager):
 
 	def add_element(self, name, append_to_list=True, register=False):
 		new_name = self.unique_name(name, name, self.element_correspondance,
-		                            clean_func=unique_name_clean_func, register=register)
+									clean_func=unique_name_clean_func, register=register)
 		if new_name != name:
 			self.log.info(f'New name for "{name}" is "{new_name}"')
 
 		elem = self.element_class(manager=self, string=name,
-		                          print_message=self.print_message)
+								  print_message=self.print_message)
 		elem.name = new_name
 		if append_to_list:
 			if elem not in self.element_list:

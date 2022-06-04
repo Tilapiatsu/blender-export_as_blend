@@ -373,8 +373,8 @@ class ImportCommand():
 			
 		if self.export_mode == 'APPEND':
 			for imported_name, new_name in self.name_correspondance.items():
+				new_name = self.om.get_next_valid_name(new_name)
 				self.log.info(f'Renaming object "{imported_name}" to "{new_name}"')
-				print(bpy.data.objects[imported_name])
 				bpy.data.objects[imported_name].name = new_name
 			# self.make_imported_objects_local()
 			# self.resolve_dependencies()
@@ -551,22 +551,24 @@ class ImportCommand():
 			for name in data_from.objects:
 				# Import objects
 				if name in object_to_include:
-					data_to.objects.append(name)
-					imported_objects.append(name)
+					if name not in data_to.objects:
+						data_to.objects.append(name)
+					if name not in imported_objects:
+						imported_objects.append(name)
 
 				if self.export_object_children:
 					if name not in self.objects_children.keys():
 						continue
 					
-					children =  self.objects_children[name]
-					if len(children):
-						for c in children:
-							if c not in self.imported_childs:
-								self.imported_childs.append(c)
-							if c not in data_to.objects:
-								data_to.objects.append(c)
-							if c not in imported_objects:
-								imported_objects.append(c)
+					children = self.objects_children[name]
+					for c in children:
+						self.log.info(f'Importing child : {c}')
+						if c not in self.imported_childs:
+							self.imported_childs.append(c)
+						if c not in data_to.objects:
+							data_to.objects.append(c)
+						if c not in imported_objects:
+							imported_objects.append(c)
 
 		# Link objects
 		with bpy.data.libraries.load(blend_file, link=is_link) as (data_from, data_to):
