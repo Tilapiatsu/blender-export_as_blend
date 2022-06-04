@@ -3,22 +3,17 @@ import bpy_extras
 import textwrap
 import subprocess
 import tempfile
-import shutil
 import os
-import stat
-import sys
 import uuid
 from os import path
 from .eab_utils.object_dependencies import ObjectDependencies
 from .eab_utils import utils as U
 
-# TODO : Need to fix collection that loose dependencies after export
-
 bl_info = {
 	"name": "Export as Blend",
 	"author": "Tilapiatsu",
-	"description": "This addon allow you to export data to a new blend file, from selected Objects or a comlplete Scene.",
-	"version": (1, 1, 0),
+	"description": "This addon allow you to export data to a new blend file or append to an existing blend file, from selected Objects or a comlplete Scene.",
+	"version": (2, 0, 0),
 	"blender": (3, 1, 0),
 	"location": "File > Export > Export as Blend (.blend)",
 	"warning": "",
@@ -53,7 +48,6 @@ def target_scene_items_update(self, value):
 			target_scene_items.append((s, s, ''))
 			
 	wm.eab_target_scene_items = str(target_scene_items)
-
 
 def target_scene_items_list(self, context):
 	wm = context.window_manager
@@ -361,7 +355,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			subprocess.Popen([bpy.app.binary_path, filepath])
 
 		if saved_to_temp_folder:
-			delete_folder_if_exist(self.tmpdir)
+			U.delete_folder_if_exist(self.tmpdir)
 
 		return {'FINISHED'}
 
@@ -407,28 +401,9 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		return name_collision
 	
 
-
-
-def delete_folder_if_exist(p):
-	if path.exists(p):
-		shutil.rmtree(p, onerror=file_acces_handler)
-
-def file_acces_handler(func, path, exc_info):
-	print('Handling Error for file ', path)
-	print(exc_info)
-	# Check if file access issue
-	if not os.access(path, os.W_OK):
-		# Try to change the permision of file
-		os.chmod(path, stat.S_IWUSR)
-		# call the calling function again
-		func(path)
-
-
-
 def menu_func_export(self, context):
 	self.layout.operator(TILA_OP_ExportAsBlend.bl_idname,
 						 text="Export as Blend (.blend)")
-
 
 
 classes = (TILA_OP_ExportAsBlend, TILA_OP_ExportAsBlendSaveCurrentFile)
