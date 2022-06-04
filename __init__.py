@@ -9,6 +9,7 @@ import stat
 import sys
 import uuid
 from os import path
+from .eab_utils.object_dependencies import ObjectDependencies
 
 # TODO : Need to fix collection that loose dependencies after export
 
@@ -295,7 +296,8 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 				
 				# rename objects collision in temporary file
 				rename_parameneters = [	'--original_names', *self.name_collisions.keys(),
-                                    	'--new_names', *self.name_collisions.values()]
+                                    	'--new_names', *self.name_collisions.values(),
+                                    	'--print_debug', str(self.print_debug)]
 				subprocess.check_call([bpy.app.binary_path,
                                     '--background',
                                     self.current_file,
@@ -303,9 +305,10 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
                                     '--python', path.join(path.dirname(path.realpath(__file__)), 'rename_objects.py'), '--'] + rename_parameneters)
 
 		# fix selected_objects name if name collision found
-		for i,n in enumerate(self.selected_objects):
-			if n in self.name_collisions.keys():
-				self.selected_objects[i] = self.name_collisions[n]
+		if self.name_collisions is not None:
+			for i,n in enumerate(self.selected_objects):
+				if n in self.name_collisions.keys():
+					self.selected_objects[i] = self.name_collisions[n]
 
 		import_parameters = [	'--source_file', self.current_file,
 								'--destination_file', filepath,
@@ -379,6 +382,15 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 					name_collision[name] = self.uuid
 		
 		return name_collision
+	
+	def get_object_children(self, obj):
+		children = []
+		parents = [o for o in bpy.data.objects]
+		for ob in parents:
+			if ob.parent == obj:
+				children.append(ob.name)
+				# self.get_object_children(ob, children)
+		return children
 
 
 
