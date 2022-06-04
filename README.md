@@ -1,13 +1,22 @@
 # Export as Blend for Blender
 
 ### Description
-This addon allow you to export data to a new blend file.
-Usually we would neeed to create a new Blend file first then Link or Append data from the file you want the data from.
+This addon allow you to export data to a new blend file or append to an existing blend file.
+Usually we would need to create a new Blend file first then Link or Append data from the file you want the data from.
 With this addon **you can just export objects dirrectly from the file you have the data into**.
 
 This addon works with objects or scene only at the moment. 
 
 *It has been tested with Blender 3.1.2 on Windows 11*
+
+***
+### Known restrictions
+Appending to file can be substentially slower then linking to files.
+
+If you append to and existing file, and some objects in the destination file have the same name of the objects in the source file, the appended objects will be automatically renamed.
+
+ he same will append to the collections if a collection with the same name already exists in the destination file.
+
 
 ***
 ### Usage
@@ -27,13 +36,13 @@ This addon works with objects or scene only at the moment.
 |**Export objects children**|Export selected object children|
 |**Export to Clean File**|If enable, the data will be exported to a clean file without any data except from your source objects. Otherwise the data will be exported in a scene with your Startup file as a starting point that can contain many data depending on your configuration.|
 |**Create Collection Hierarchy**| The collection hierarchy of the selected objects will be recreated in the exported file. If disable, all objects will be exported in the root collection.|
+|**Export dependencies in dedicated collection**| If enable any object dependencies will be exported in a collection named "Dependencies". Otherwise, the collection hierarchy will be recreated for each dependencies. ( An object dependency is any data neeeded for the selected objects to be evaluated correctly. For exemple, an object that is used in the modifier or a driver used in by the exported object. ) |
 |**Export objects in new collection**|If enable everything will be place under a collection which name is defined by `New collection Name`|
 |**New Collection name**|Name of the collection |
-|**Export dependencies in dedicated collection**| If enable any object dependencies will be exported in a collection named "Dependencies". Otherwise, the collection hierarchy will be recreated for each dependencies. ( An object dependency is any data neeeded for the selected objects to be evaluated correctly. For exemple, an object that is used in the modifier or a driver used in by the exported object. ) |
 |**Open Exported Blend**| After export, the file is exported.|
 |**Print debug**| Will print to console all message the operator will do behind the scene to help you understand what's happening|
 
 
-### Feedback
 ***
+### Feedback
 Feel free to send me feedback or to report any issues or bugs if you found one.
