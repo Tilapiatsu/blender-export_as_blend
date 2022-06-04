@@ -10,6 +10,7 @@ import sys
 import uuid
 from os import path
 from .eab_utils.object_dependencies import ObjectDependencies
+from .eab_utils import utils as U
 
 # TODO : Need to fix collection that loose dependencies after export
 
@@ -23,7 +24,6 @@ bl_info = {
 	"warning": "",
 	"category": "Import-Export"
 }
-
 
 target_scene_items = []
 target_scene_default_item = '("ACTIVE_SCENE", "Active Scene", "")'
@@ -376,21 +376,36 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 
 	def get_name_collisions_from_file(self, filepath, local_names):
 		name_collision = {}
+		# register name collision for objects in local_names
 		with bpy.data.libraries.load(filepath, link=False) as (data_from, _):
 			for name in data_from.objects:
 				if name in local_names:
 					name_collision[name] = self.uuid
+				
+					# register name collision for ojects children
+					if self.export_object_children:
+						children = U.get_object_children(bpy.data.objects[name])
+						for c in children:
+							if c in data_from.objects and c not in name_collision.keys():
+								name_collision[c] = self.uuid
+		
+			# register name collision for objects dependencies
+			name_collision_list = list(name_collision.keys())
+			for name in name_collision_list:
+				obj = bpy.data.objects[name]
+				dependencies = ObjectDependencies(obj, print_message=True)
+				dependencies.dependencies
+				object_dependencies = dependencies.dependency_objects
+				for o in object_dependencies:
+					if o in name_collision.keys() or o not in data_from.objects:
+						continue
+
+					name_collision[o] = self.uuid
+
+			
 		
 		return name_collision
 	
-	def get_object_children(self, obj):
-		children = []
-		parents = [o for o in bpy.data.objects]
-		for ob in parents:
-			if ob.parent == obj:
-				children.append(ob.name)
-				# self.get_object_children(ob, children)
-		return children
 
 
 

@@ -10,6 +10,7 @@ from eab_utils.logger import Logger
 from eab_utils.manager import ObjectManager, CollectionManager
 from eab_utils.element import Collection, Object
 from eab_utils.object_dependencies import ObjectDependencies
+import eab_utils.utils as U
 
 IMPORT_COLLECTION_NAME = 'TILA_IMPORT_COLLECTION'
 DEPENDENCIES_COLLECTION_NAME = 'Dependencies'				
@@ -179,7 +180,7 @@ class ImportCommand():
 
 		while len(object_to_process):
 			o = object_to_process.pop(0)
-			self.objects_children[o] = self.get_object_children(objects[o])
+			self.objects_children[o] = U.get_object_children(objects[o])
 			if len(self.objects_children[o]):
 				for c in self.objects_children[o]:
 					if c not in object_to_process:
@@ -649,14 +650,6 @@ class ImportCommand():
 				collection_hierarchy.setdefault(obj.name, parent_collection)
 		return collection_hierarchy
 	
-	def get_object_children(self, obj):
-		children = []
-		parents = [o for o in bpy.data.objects]
-		for ob in parents: 
-			if ob.parent == obj: 
-				children.append(ob.name)
-				# self.get_object_children(ob, children)
-		return children 
 
 	def remove_source_library(self):
 		if len(self.previous_library_objects) or len(self.previous_library_collections) or len(self.previous_library_scenes):
