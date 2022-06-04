@@ -552,7 +552,7 @@ class ImportCommand():
 				# Import objects
 				if name in object_to_include:
 					if name not in data_to.objects:
-						self.log.info(f'Importing : {c}')
+						self.log.info(f'Importing : {name}')
 						data_to.objects.append(name)
 					if name not in imported_objects:
 						imported_objects.append(name)
