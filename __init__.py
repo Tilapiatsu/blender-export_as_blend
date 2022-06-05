@@ -374,14 +374,14 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 		with bpy.data.libraries.load(filepath, link=False) as (data_from, _):
 			for name in data_from.objects:
 				if name in local_names:
-					name_collision[name] = self.uuid
+					name_collision[name] = f'{name}_{self.uuid}'
 				
 					# register name collision for ojects children
 					if self.export_object_children:
 						children = U.get_object_children(bpy.data.objects[name])
 						for c in children:
 							if c in data_from.objects and c not in name_collision.keys():
-								name_collision[c] = self.uuid
+								name_collision[c] = f'{c}_{self.uuid}'
 		
 			# register name collision for objects dependencies
 			name_collision_list = list(name_collision.keys())
@@ -394,7 +394,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 					if o in name_collision.keys() or o not in data_from.objects:
 						continue
 
-					name_collision[o] = self.uuid
+					name_collision[o] = f'{o}_{self.uuid}'
 
 			
 		
