@@ -258,7 +258,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 			filepath += '.blend'
 		
 		self.selected_objects = [o.name for o in bpy.context.selected_objects]
-		self.name_collisions = None
+		self.name_collisions = {}
 
 		# Cancel if current file and destination file are the same
 		if os.path.normpath(filepath) == os.path.normpath(bpy.data.filepath):
@@ -290,19 +290,18 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 				
 				# rename objects collision in temporary file
 				rename_parameneters = [	'--original_names', *self.name_collisions.keys(),
-                                    	'--new_names', *self.name_collisions.values(),
-                                    	'--print_debug', str(self.print_debug)]
+										'--new_names', *self.name_collisions.values(),
+										'--print_debug', str(self.print_debug)]
 				subprocess.check_call([bpy.app.binary_path,
-                                    '--background',
-                                    self.current_file,
-                                    '--factory-startup',
-                                    '--python', path.join(path.dirname(path.realpath(__file__)), 'rename_objects.py'), '--'] + rename_parameneters)
+									'--background',
+									self.current_file,
+									'--factory-startup',
+									'--python', path.join(path.dirname(path.realpath(__file__)), 'rename_objects.py'), '--'] + rename_parameneters)
 
 		# fix selected_objects name if name collision found
-		if self.name_collisions is not None:
-			for i,n in enumerate(self.selected_objects):
-				if n in self.name_collisions.keys():
-					self.selected_objects[i] = self.name_collisions[n]
+		for i,n in enumerate(self.selected_objects):
+			if n in self.name_collisions.keys():
+				self.selected_objects[i] = self.name_collisions[n]
 
 		import_parameters = [	'--source_file', self.current_file,
 								'--destination_file', filepath,
@@ -322,7 +321,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 								'--print_debug', str(self.print_debug)
 							]
 
-		if self.name_collisions is not None:
+		if len(self.name_collisions.keys()):
 			import_parameters += [	'--imported_names', *self.name_collisions.values(),
 									'--new_names', *self.name_collisions.keys()]
 
@@ -395,9 +394,7 @@ class TILA_OP_ExportAsBlend(bpy.types.Operator, bpy_extras.io_utils.ExportHelper
 						continue
 
 					name_collision[o] = f'{o}_{self.uuid}'
-
 			
-		
 		return name_collision
 	
 
